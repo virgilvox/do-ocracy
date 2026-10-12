@@ -1,17 +1,20 @@
 /* DO-OCRACY's sound, on Bellows (bellows-embedded, the C++ port of
  * bellows.live's DSP core, vendored in third_party/bellows).
  *
- * The music is written, not generated, the way doot-doot-revolution does
- * it: each song is a form of sections, a chord per bar, a set of layers per
- * section, and a written lead line. A small conductor fills in the backing
- * (drums, a genre bass groove, voice-led pads, arps) on a 16-step grid, so
- * the arrangement builds and breathes: intro on pad and arp, the first verse
- * without snare, the second verse bigger, every chorus with everything, a
- * stripped bridge so the last chorus lands, fills at the end of sections.
+ * The soundtrack is a love letter to the Hackers (1995) soundtrack: Orbital's
+ * dreamy arpeggios, Underworld's hypnotic sixteenths, the Prodigy's breakbeats
+ * and rave stabs, and a squelching acid line under all of it. Hack the planet.
  *
- *   1  lobby / attract   "Coffee and Coworking"   city pop, 112 bpm
- *   2  the night         "Hack Your Hackerspace"  synthwave, 140 bpm, two passes that build
- *   3  closing time      "Who Is Doing The Dishes" synthcore, 168 bpm, hook on a loop
+ * It is written the way doot-doot-revolution writes songs: each song is a
+ * form of sections, a chord per bar, a set of layers per section and a written
+ * lead line; a small conductor plays drums, the acid line, arps, stabs and
+ * pads from those on a 16-step grid, so the arrangement builds and drops.
+ *
+ *   1  lobby / attract   "Halcyon Tuesday"   ambient electronica, 120 bpm
+ *   2  the night         "Hack the Planet"   acid breakbeat, 136 bpm:
+ *                        filtered acid intro, four-on-the-floor build, the drop,
+ *                        a pads-only breakdown, the second drop with a counter line
+ *   3  closing time      "Mess the Planet"   breakbeat rush, 160 bpm
  *
  * Effects are notes on their own voices on top: FM bells for clout, plucked
  * strings for karma, a VA buzzer for trouble. Same API as audio.h, so the C
@@ -42,52 +45,58 @@ float Mtof(float n) { return 440.0f * powf(2.0f, (n - 69.0f) / 12.0f); }
 
 /* ── the songs ─────────────────────────────────────────────────────
  * Notes are NAME+OCTAVE:LENGTH in sixteenths, '-' is a rest, '|' ends a bar.
- * Every melody is two four-bar halves that answer each other. */
+ * E minor with Phrygian colour (the F natural) for the riff. */
 
 enum Layer : uint16_t {
-  L_BASS = 1, L_KICK = 2, L_SNARE = 4, L_HAT = 8, L_PERC = 16, L_PAD = 32, L_ARP = 64, L_LEAD = 128, L_COUNTER = 256,
+  L_ACID = 1,    /* the 303-style line */
+  L_KICK = 2,    /* four on the floor */
+  L_BREAK = 4,   /* breakbeat kick and snare instead */
+  L_HAT = 8,
+  L_PERC = 16,   /* claps on the backbeat */
+  L_PAD = 32,
+  L_HYPNO = 64,  /* the repeating arpeggio */
+  L_LEAD = 128,
+  L_COUNTER = 256,
+  L_STAB = 512,  /* rave chord stabs */
+  L_ROLL = 1024, /* snare roll into the next section */
+  L_SUB = 2048,  /* a soft sub instead of the acid line (lobby) */
 };
-constexpr uint16_t L_ALL = L_BASS | L_KICK | L_SNARE | L_HAT | L_PERC | L_PAD | L_ARP | L_LEAD;
 
-/* the night: Em C G D in the verse, C G D Em in the chorus (the lift), and a
- * bridge to Am C G B that borrows the D# so the last chorus resolves */
-const char* const NIGHT_VERSE =
-  "E5:4 G5:2 E5:2 B4:4 E5:4 | C5:4 E5:2 G5:2 E5:4 C5:4 | B4:4 D5:2 G5:2 B5:4 A5:4 | F#5:4 A5:4 D5:8 | "
-  "E5:4 G5:2 E5:2 B4:4 E5:4 | C5:4 E5:2 G5:2 C6:4 B5:4 | D5:4 G5:2 B5:2 D6:4 B5:4 | A5:4 F#5:4 D5:8";
-const char* const NIGHT_HOOK =
-  "G5:2 G5:2 E6:4 D6:2 C6:2 G5:4 | G5:2 B5:2 D6:4 C6:2 B5:2 G5:4 | F#5:2 A5:2 D6:4 C6:2 A5:2 F#5:4 | G5:4 B5:4 E6:8 | "
-  "G5:2 G5:2 E6:4 D6:2 C6:2 G5:4 | G5:2 B5:2 D6:4 G6:2 D6:2 B5:4 | A5:2 B5:2 C6:4 B5:2 A5:2 F#5:4 | G5:8 E5:8";
-const char* const NIGHT_BRIDGE =
-  "A4:4 C5:4 E5:6 D5:2 | C5:4 E5:4 G5:8 | B4:4 D5:4 G5:6 F#5:2 | D#5:4 F#5:4 B5:8 | "
-  "A4:4 C5:4 E5:6 G5:2 | E5:4 G5:2 C6:2 B5:4 G5:4 | D5:4 G5:4 B5:8 | B5:4 A5:4 F#5:4 D#5:4";
-/* coffee and coworking: the same key, half the hurry */
-const char* const LOBBY_LEAD =
-  "B4:6 E5:2 G5:8 | C5:6 E5:2 G5:8 | D5:6 G5:2 B5:8 | A5:8 F#5:8 | "
-  "B4:6 E5:2 G5:4 B5:4 | C5:6 E5:2 G5:4 C6:4 | D6:4 B5:4 G5:8 | F#5:8 -:8";
+/* the riff: a two-bar call, a two-bar answer, then again with a new ending */
+const char* const RIFF =
+  "E5:2 E5:2 G5:2 E5:2 B5:2 E5:2 A5:2 G5:2 | E5:2 E5:2 G5:2 E5:2 D6:2 B5:2 A5:2 F5:2 | "
+  "E5:2 E5:2 G5:2 E5:2 C6:2 B5:2 G5:2 E5:2 | F#5:2 A5:2 D6:4 C6:2 B5:2 A5:4 | "
+  "E5:2 E5:2 G5:2 E5:2 B5:2 E5:2 A5:2 G5:2 | E5:2 E5:2 G5:2 E5:2 D6:2 B5:2 A5:2 F5:2 | "
+  "G5:2 E5:2 C6:2 E5:2 B5:2 G5:2 E5:2 C5:2 | D5:4 F#5:4 E5:8";
+/* the breakdown: long notes over the pads, then a B major turnaround back into the drop */
+const char* const DREAM =
+  "G5:8 E5:8 | F#5:8 A5:8 | B5:12 G5:4 | E5:16 | G5:8 C6:8 | A5:8 F#5:8 | D#5:8 F#5:8 | B5:16";
+/* the lobby: slow bells, room to breathe */
+const char* const HALCYON =
+  "B5:12 -:4 | G5:12 E5:4 | D6:12 -:4 | F#5:16 | B5:8 E6:8 | C6:12 -:4 | B5:8 G5:8 | A5:16";
 
 struct SectionDef { const char* tag; int bars; const char* chords; uint16_t layers; const char* lead; };
 
+constexpr uint16_t DROP = L_BREAK | L_HAT | L_PERC | L_ACID | L_HYPNO | L_STAB | L_LEAD;
 const SectionDef NIGHT[] = {
-  {"INTRO", 4, "Em C G D", L_PAD | L_ARP, nullptr},
-  {"VERSE", 8, "Em C G D Em C G D", L_BASS | L_KICK | L_HAT | L_PAD | L_LEAD, NIGHT_VERSE},
-  {"CHORUS", 8, "C G D Em C G D Em", L_ALL, NIGHT_HOOK},
-  {"VERSE", 8, "Em C G D Em C G D", L_BASS | L_KICK | L_SNARE | L_HAT | L_PAD | L_ARP | L_LEAD, NIGHT_VERSE},
-  {"CHORUS", 8, "C G D Em C G D Em", L_ALL, NIGHT_HOOK},
-  {"BRIDGE", 8, "Am C G B Am C G B", L_BASS | L_KICK | L_HAT | L_PAD | L_LEAD, NIGHT_BRIDGE},
-  {"CHORUS", 8, "C G D Em C G D Em", L_ALL | L_COUNTER, NIGHT_HOOK},
+  {"INTRO", 8, "Em Em C D Em Em C D", L_HAT | L_ACID, nullptr},
+  {"BUILD", 8, "Em Em C D Em Em C D", L_KICK | L_HAT | L_PERC | L_ACID | L_HYPNO | L_ROLL, nullptr},
+  {"DROP", 8, "Em Em C D Em Em C D", DROP, RIFF},
+  {"DROP", 8, "Em Em C D Em Em C D", DROP, RIFF},
+  {"BREAK", 8, "C D Em Em C D B B", L_PAD | L_HYPNO | L_LEAD | L_ROLL, DREAM},
+  {"DROP", 8, "Em Em C D Em Em C D", DROP | L_COUNTER, RIFF},
+  {"DROP", 8, "Em Em C D Em Em C D", DROP | L_COUNTER, RIFF},
 };
-constexpr int kNightLoop = 3;   /* after the last chorus, back to the second verse */
+constexpr int kNightLoop = 1;   /* back to the build, and up again */
 
 const SectionDef LOBBY[] = {
-  {"INTRO", 4, "Em C G D", L_PAD | L_ARP, nullptr},
-  {"VERSE", 8, "Em C G D Em C G D", L_BASS | L_KICK | L_HAT | L_PAD | L_ARP | L_LEAD, LOBBY_LEAD},
-  {"CHORUS", 8, "C G D Em C G D Em", L_BASS | L_KICK | L_HAT | L_PERC | L_PAD | L_ARP | L_LEAD, NIGHT_HOOK},
+  {"A", 8, "Em C G D Em C G D", L_PAD | L_HYPNO | L_LEAD, HALCYON},
+  {"B", 8, "Em C G D Em C G D", L_PAD | L_HYPNO | L_LEAD | L_KICK | L_HAT | L_SUB, HALCYON},
 };
-constexpr int kLobbyLoop = 1;
+constexpr int kLobbyLoop = 0;
 
 const SectionDef CLOSING[] = {
-  {"CHORUS", 8, "C G D Em C G D Em", L_ALL | L_COUNTER, NIGHT_HOOK},
-  {"CHORUS", 8, "C G D Em C G D Em", L_ALL | L_COUNTER, NIGHT_HOOK},
+  {"RUSH", 8, "Em Em C D Em Em C D", DROP | L_COUNTER, RIFF},
 };
 
 /* parsed forms of the above */
@@ -152,18 +161,21 @@ int DiatonicBelow(int midi) {
   return midi - 3;
 }
 
+/* the acid line: semitones over the bar's root, accents, -1 rests.
+ * The 1 is the Phrygian F; the 10 and 3 are the dirty blue notes */
+const int8_t ACID_N[16] = {0, -1, 12, 0, 0, 1, -1, 12, 0, -1, 10, 0, 12, 0, 7, 3};
+const uint8_t ACID_A[16] = {1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 0};
+/* a breakbeat: kick, snare and ghost notes (velocity, 0 = none) */
+const float BRK_K[16] = {1, 0, .7f, 0, 0, 0, 0, 0, 0, 0, 1, .6f, 0, 0, 0, 0};
+const float BRK_S[16] = {0, 0, 0, 0, 1, 0, 0, .3f, 0, .25f, 0, 0, 1, 0, 0, .4f};
+
 /* ── the band ──────────────────────────────────────────────────── */
 
 using String = bellows::Pluck<70>;
 using Bell = bellows::Fm;
-enum Genre { G_CITYPOP, G_SYNTHWAVE, G_SYNTHCORE };
+enum Genre { G_AMBIENT, G_ACID, G_RUSH };
 enum Inst { I_BELL, I_PLUCK, I_BUZZ, I_KICK, I_SNARE, I_HAT, I_OHAT, I_CLAP, I_BUZZ_OFF };
 struct Ev { int at; int inst; float freq, vel; };
-
-struct Groove { int8_t step, off; };
-const Groove kBassCity[] = {{0, 0}, {3, 7}, {6, 0}, {8, 12}, {11, 7}, {14, 0}};
-const Groove kBassWave[] = {{0, 0}, {4, 0}, {7, 12}, {8, 0}, {12, 0}, {14, 7}};
-const Groove kBassCore[] = {{0, 0}, {2, 0}, {4, 0}, {6, 0}, {8, 0}, {10, 12}, {12, 0}, {14, 0}};
 
 class Band {
  public:
@@ -171,8 +183,8 @@ class Band {
     sr_ = sr;
     rng_snare_.Init("do-ocracy::kit::snare/noise");
     rng_clap_.Init("do-ocracy::kit::clap/noise");
-    rng_bass_.Init("do-ocracy::bass");
-    rng_str_.Init("do-ocracy::arp");
+    rng_acid_.Init("do-ocracy::acid");
+    rng_str_.Init("do-ocracy::hypno");
     rng_sfx_.Init("do-ocracy::sfx");
     rng_buzz_.Init("do-ocracy::buzz");
     rng_ctr_.Init("do-ocracy::counter");
@@ -181,23 +193,28 @@ class Band {
     for (unsigned i = 0; i < sizeof LOBBY / sizeof LOBBY[0]; i++) ParseSection(&LOBBY[i], &lobby_[i]);
     for (unsigned i = 0; i < sizeof CLOSING / sizeof CLOSING[0]; i++) ParseSection(&CLOSING[i], &closing_[i]);
 
-    bellows::Hat::Params oh; oh.decay = 0.28f; oh.tone = 0.9f;
+    bellows::Hat::Params oh; oh.decay = 0.22f; oh.tone = 0.95f;
     ohat_.Init(sr, oh);
     bellows::Snare::Params cp; cp.tone = 0.2f; cp.snap = 0.9f; cp.decay = 0.14f;
     clap_.Init(sr, &rng_clap_, cp);
 
-    /* the pad: a soft two-operator FM voice, a triad that clears before the
-     * next bar. A detuned VA pad sounded the same and cost most of the engine's
-     * CPU, and a Raspberry Pi has to run this */
+    /* the pad: a soft two-operator FM voice; a detuned VA pad cost most of the CPU */
     bellows::Fm::Params pad;
     pad.ops = 2; pad.algorithm = 1; pad.feedback = 0.05f; pad.brightness = 0.25f;
-    pad.attack = 0.3f; pad.decay = 0.6f; pad.sustain = 0.8f; pad.release = 0.5f;
-    pad.m_attack = 0.4f; pad.m_decay = 0.8f; pad.m_sustain = 0.4f; pad.m_release = 0.5f;
+    pad.attack = 0.6f; pad.decay = 0.8f; pad.sustain = 0.85f; pad.release = 0.9f;
+    pad.m_attack = 0.6f; pad.m_decay = 1.0f; pad.m_sustain = 0.4f; pad.m_release = 0.8f;
     pad.ratio[0] = 1.0f; pad.ratio[1] = 2.0f; pad.level[1] = 0.35f;
     for (int i = 0; i < 6; ++i) pad_.at(i).Init(sr, pad);
 
-    String::Params arp; arp.damp = 0.45f; arp.pick_pos = 0.25f; arp.decay = 0.6f; arp.level = 0.85f;
-    for (int i = 0; i < 6; ++i) arp_.at(i).Init(sr, &rng_str_, arp);
+    /* rave stabs: a bright FM organ hit */
+    bellows::Fm::Params st;
+    st.ops = 2; st.algorithm = 1; st.feedback = 0.45f; st.brightness = 0.7f;
+    st.attack = 0.002f; st.decay = 0.18f; st.sustain = 0.0f; st.release = 0.12f;
+    st.ratio[0] = 1.0f; st.ratio[1] = 1.0f; st.level[1] = 0.8f;
+    for (int i = 0; i < 4; ++i) stab_.at(i).Init(sr, st);
+
+    String::Params hy; hy.damp = 0.18f; hy.pick_pos = 0.2f; hy.decay = 0.5f; hy.level = 0.9f;
+    for (int i = 0; i < 6; ++i) hypno_.at(i).Init(sr, &rng_str_, hy);
 
     bellows::Va::Params ctr; ctr.shape = 3.0f; ctr.cutoff = 1400.0f; ctr.detune = 4.0f; ctr.attack = 0.01f; ctr.sustain = 0.6f; ctr.release = 0.15f;
     counter_.Init(sr, &rng_ctr_, ctr);
@@ -214,61 +231,59 @@ class Band {
     bz.attack = 0.002f; bz.decay = 0.1f; bz.sustain = 0.7f; bz.release = 0.05f;
     buzz_.Init(sr, &rng_buzz_, bz);
 
-    bellows::PlateExt::Params pp; pp.decay = 0.66f; pp.damping = 0.5f; pp.mix = 1.0f; pp.predelay = 0.01f;
+    bellows::PlateExt::Params pp; pp.decay = 0.7f; pp.damping = 0.45f; pp.mix = 1.0f; pp.predelay = 0.012f;
     plate_.Init(sr, pp);
     bellows::StereoDelay<500>::Params d;
-    d.time_l = 0.26f; d.time_r = 0.39f; d.feedback = 0.32f; d.cross_feedback = 0.1f; d.damping = 3500.0f; d.mix = 1.0f;
+    d.time_l = 0.33f; d.time_r = 0.22f; d.feedback = 0.38f; d.cross_feedback = 0.15f; d.damping = 3200.0f; d.mix = 1.0f;
     delay_.Init(sr, d);
-    bellows::Chorus<>::Params ch; ch.rate = 2.5f; ch.depth = 0.5f; ch.mix = 0.4f;
+    bellows::Chorus<>::Params ch; ch.rate = 1.2f; ch.depth = 0.45f; ch.mix = 0.35f;
     chorus_.Init(sr, ch);
-    bellows::Saturator<>::Params sat; sat.drive = 1.5f; sat.tone = -0.3f;
-    bass_sat_.Init(sr, sat);
+    bellows::Saturator<2>::Params sat; sat.drive = 2.2f; sat.tone = 0.1f;
+    acid_sat_.Init(sr, sat);
     bellows::Compressor<>::Params cmp; cmp.threshold_db = -14.0f; cmp.ratio = 2.5f; cmp.knee_db = 6.0f; cmp.attack = 0.006f; cmp.release = 0.16f;
     comp_.Init(sr, cmp);
     bellows::Limiter<>::Params lim; lim.ceiling_db = -0.8f; lim.release = 0.08f;
     limiter_.Init(sr, lim);
 
-    SetGenre(G_CITYPOP);
+    SetGenre(G_AMBIENT);
     SetMode(1);
     ready_ = true;
   }
 
   bool Ready() const { return ready_; }
 
-  /* patches per genre, after doot-doot-revolution's racks */
   void SetGenre(Genre g) {
     genre_ = g;
-    bellows::Va::Params bass;
-    bass.attack = 0.003f; bass.decay = 0.24f; bass.sustain = 0.45f; bass.release = 0.08f; bass.f_decay = 0.12f; bass.f_sustain = 0.2f;
+    /* the acid line: a resonant saw with a snappy filter envelope, no sustain */
+    acid_p_ = bellows::Va::Params();
+    acid_p_.shape = 0.0f; acid_p_.detune = 0.0f; acid_p_.resonance = g == G_AMBIENT ? 0.15f : 0.82f;
+    acid_p_.cutoff = g == G_AMBIENT ? 260.0f : 400.0f; acid_p_.env_amount = g == G_AMBIENT ? 0.4f : 2.6f;
+    acid_p_.attack = 0.002f; acid_p_.decay = 0.18f; acid_p_.sustain = g == G_AMBIENT ? 0.7f : 0.25f; acid_p_.release = 0.05f;
+    acid_p_.f_attack = 0.001f; acid_p_.f_decay = 0.14f; acid_p_.f_sustain = 0.0f; acid_p_.f_release = 0.05f;
+    acid_p_.sub = g == G_AMBIENT ? 0.8f : 0.2f;
+    acid_.Init(sr_, &rng_acid_, acid_p_);
+
     bellows::Fm::Params lead;
-    lead.ops = 4; lead.algorithm = 4; lead.attack = 0.005f; lead.release = 0.12f;
     bellows::Kick::Params kp;
     bellows::Snare::Params sp;
     bellows::Hat::Params hp;
-    switch (g) {
-      case G_CITYPOP:
-        bass.shape = 2.0f; bass.cutoff = 560.0f; bass.resonance = 0.3f; bass.env_amount = 1.2f; bass.sub = 0.4f;
-        lead.ratio[0] = 1; lead.ratio[1] = 2; lead.ratio[2] = 3; lead.ratio[3] = 1; lead.feedback = 0.12f; lead.brightness = 0.4f; lead.decay = 0.6f; lead.sustain = 0.45f;
-        kp.decay = 0.3f; kp.drive = 1.6f; kp.pitch_decay = 0.06f;
-        sp.decay = 0.16f; sp.tone = 0.5f; sp.snap = 0.1f;
-        hp.decay = 0.05f; hp.tone = 1.0f;
-        break;
-      case G_SYNTHWAVE:
-        bass.shape = 0.0f; bass.cutoff = 520.0f; bass.resonance = 0.5f; bass.env_amount = 1.6f; bass.sub = 0.5f; bass.drift = 0.2f;
-        lead.ratio[0] = 1; lead.ratio[1] = 2.5f; lead.ratio[2] = 5; lead.ratio[3] = 7; lead.feedback = 0.28f; lead.brightness = 0.5f; lead.decay = 0.35f; lead.sustain = 0.55f;
-        kp.decay = 0.35f; kp.pitch_decay = 0.08f; kp.drive = 2.0f; kp.click_tune = 6.0f;
-        sp.decay = 0.19f; sp.tone = 0.6f; sp.snap = 0.08f;
-        hp.decay = 0.06f; hp.tone = 1.1f;
-        break;
-      case G_SYNTHCORE:
-        bass.shape = 0.0f; bass.cutoff = 720.0f; bass.resonance = 0.38f; bass.env_amount = 1.5f; bass.sub = 0.6f; bass.detune = 8.0f;
-        lead.ratio[0] = 1; lead.ratio[1] = 2; lead.ratio[2] = 3.5f; lead.ratio[3] = 7; lead.feedback = 0.32f; lead.brightness = 0.6f; lead.decay = 0.3f; lead.sustain = 0.6f;
-        kp.decay = 0.3f; kp.pitch_decay = 0.05f; kp.drive = 2.2f; kp.click_tune = 8.0f;
-        sp.decay = 0.17f; sp.tone = 0.6f; sp.snap = 0.06f;
-        hp.decay = 0.05f; hp.tone = 1.2f;
-        break;
+    if (g == G_AMBIENT) {
+      /* Orbital: a soft glassy bell lead */
+      lead.ops = 2; lead.algorithm = 1; lead.feedback = 0.0f; lead.brightness = 0.45f;
+      lead.ratio[0] = 1; lead.ratio[1] = 3.5f; lead.level[1] = 0.5f;
+      lead.attack = 0.01f; lead.decay = 1.2f; lead.sustain = 0.25f; lead.release = 0.8f;
+      kp.decay = 0.25f; kp.drive = 1.2f; kp.pitch_decay = 0.06f;
+      sp.decay = 0.16f; sp.tone = 0.5f; sp.snap = 0.2f;
+      hp.decay = 0.035f; hp.tone = 1.2f;
+    } else {
+      /* the Prodigy: a hard, saw-ish FM lead with feedback */
+      lead.ops = 2; lead.algorithm = 1; lead.feedback = g == G_RUSH ? 0.65f : 0.55f; lead.brightness = 0.6f;
+      lead.ratio[0] = 1; lead.ratio[1] = 1; lead.level[1] = 0.7f;
+      lead.attack = 0.003f; lead.decay = 0.25f; lead.sustain = 0.55f; lead.release = 0.08f;
+      kp.decay = 0.32f; kp.pitch_decay = 0.06f; kp.drive = g == G_RUSH ? 3.0f : 2.4f; kp.click_tune = 7.0f;
+      sp.decay = 0.2f; sp.tone = 0.45f; sp.snap = 0.28f;
+      hp.decay = 0.04f; hp.tone = 1.25f;
     }
-    bass_.Init(sr_, &rng_bass_, bass);
     lead_.Init(sr_, lead);
     kick_.Init(sr_, kp);
     snare_.Init(sr_, &rng_snare_, sp);
@@ -342,15 +357,21 @@ class Band {
     mode_ = pending_mode_;
     pending_mode_ = -1;
     section_ = 0; bar_ = 0; step_ = 0; pass_ = 0; countdown_ = 0;
-    if (mode_ == 0) { bass_.NoteOff(); lead_.NoteOff(); counter_.NoteOff(); PadRelease(); return; }
-    unsigned bpm = mode_ == 3 ? 168 : mode_ == 2 ? 140 : 112;
-    samples_per_step_ = static_cast<int>(sr_ * 60.0f / (static_cast<float>(bpm) * 4.0f) + 0.5f);
-    SetGenre(mode_ == 3 ? G_SYNTHCORE : mode_ == 2 ? G_SYNTHWAVE : G_CITYPOP);
+    if (mode_ == 0) { acid_.NoteOff(); lead_.NoteOff(); counter_.NoteOff(); PadRelease(); return; }
+    float bpm = mode_ == 3 ? 160.0f : mode_ == 2 ? 136.0f : 120.0f;
+    samples_per_step_ = static_cast<int>(sr_ * 60.0f / (bpm * 4.0f) + 0.5f);
+    SetGenre(mode_ == 3 ? G_RUSH : mode_ == 2 ? G_ACID : G_AMBIENT);
+    /* echoes in time: a dotted eighth left, an eighth right */
+    bellows::StereoDelay<500>::Params d;
+    float beat = 60.0f / bpm;
+    d.time_l = beat * 0.75f; d.time_r = beat * 0.5f; d.feedback = mode_ == 1 ? 0.48f : 0.36f;
+    d.cross_feedback = 0.15f; d.damping = 3200.0f; d.mix = 1.0f;
+    delay_.SetParams(d);
     last_chord_ = -1;
   }
 
   const Section& Current(int* count, int* loop) const {
-    if (mode_ == 3) { *count = 2; *loop = 0; return closing_[section_]; }
+    if (mode_ == 3) { *count = 1; *loop = 0; return closing_[section_]; }
     if (mode_ == 2) { *count = sizeof NIGHT / sizeof NIGHT[0]; *loop = kNightLoop; return night_[section_]; }
     *count = sizeof LOBBY / sizeof LOBBY[0]; *loop = kLobbyLoop; return lobby_[section_];
   }
@@ -361,8 +382,7 @@ class Band {
   void PadChord(int root, bool minor, float vel) {
     int tones[3] = {root, (root + (minor ? 3 : 4)) % 12, (root + 7) % 12};
     PadRelease();
-    float center = pad_center_;
-    float sum = 0;
+    float center = pad_center_, sum = 0;
     for (int k = 0; k < 3; k++) {
       int best = 0;
       float bd = 1e9f;
@@ -394,80 +414,103 @@ class Band {
       }
     }
     const uint16_t lay = sec->def->layers;
-    int n = 0;
-    static const uint16_t kCount[7] = {L_KICK, L_SNARE, L_HAT, L_BASS, L_ARP, L_LEAD, L_PAD};
-    for (int k = 0; k < 7; k++) n += (lay & kCount[k]) ? 1 : 0;
-    float its = 0.18f + 0.12f * n;
-    if (its < 0.28f) its = 0.28f;
-    if (its > 1.0f) its = 1.0f;
-    if (mode_ == 1) its *= 0.75f;                 /* the lobby never gets loud */
-    const bool second = pass_ > 0 || mode_ == 3;  /* the second time through, it builds */
     const bool last_bar = bar_ == sec->def->bars - 1;
+    const bool intro = mode_ == 2 && section_ == 0;
     const int root = sec->roots[bar_ % 8];
     const bool minor = sec->minor[bar_ % 8];
     const float jit = 0.06f * rng_sfx_.Next();
+    const float soft = mode_ == 1 ? 0.6f : 1.0f;
 
     /* drums */
-    if (lay & L_KICK) {
-      bool four = its > 0.4f && mode_ != 1;
-      if ((four && s % 4 == 0) || (!four && (s == 0 || s == 8))) kick_.NoteOn(50.0f, 0.86f + 0.14f * its);
-      if (mode_ == 3 && bar_ % 4 == 3 && s == 14) kick_.NoteOn(50.0f, 0.8f);
+    bool rolling = (lay & L_ROLL) && bar_ >= sec->def->bars - (sec->def->tag[0] == 'B' && sec->def->tag[1] == 'R' ? 2 : 1);
+    if (rolling) {
+      /* a snare roll into the drop: eighths, then sixteenths, getting louder */
+      int pos = (bar_ - (sec->def->bars - 2)) * 16 + s;
+      float up = (bar_ == sec->def->bars - 1 ? 0.5f : 0.25f) + 0.5f * s / 16.0f;
+      if (bar_ == sec->def->bars - 1 || s % 2 == 0) snare_.NoteOn(190.0f, up);
+      (void)pos;
     }
-    if ((lay & L_SNARE) && (s == 4 || s == 12)) snare_.NoteOn(190.0f, 0.8f + jit);
-    if (last_bar && its > 0.6f && (lay & L_SNARE) && (s == 14 || s == 15)) { snare_.NoteOn(190.0f, 0.45f); if (s == 14) kick_.NoteOn(50.0f, 0.7f); }
+    if ((lay & L_KICK) && s % 4 == 0 && !(rolling && last_bar && s >= 12)) kick_.NoteOn(50.0f, 0.95f * soft);
+    if (lay & L_BREAK) {
+      if (BRK_K[s] > 0) kick_.NoteOn(50.0f, BRK_K[s]);
+      if (BRK_S[s] > 0) snare_.NoteOn(190.0f, BRK_S[s] + jit);
+      if (genre_ == G_RUSH && (s == 6 || s == 14)) kick_.NoteOn(50.0f, 0.7f);
+      if (last_bar && s >= 12) snare_.NoteOn(190.0f, 0.35f + 0.1f * (s - 12));   /* fill */
+    }
     if (lay & L_HAT) {
-      bool sixteenths = its > 0.7f || (second && mode_ == 2 && (lay & L_SNARE));
-      if (s == 6 || s == 14) ohat_.NoteOn(330.0f, 0.25f + 0.15f * its);
-      else if (sixteenths || s % 2 == 0) hat_.NoteOn(330.0f, (0.3f + 0.22f * its) * (s % 4 == 2 ? 1.0f : 0.75f) + jit);
-    }
-    if ((lay & L_PERC) && s % 4 == 2 && s != 6 && s != 14) {
-      /* a clap is three snares 10 ms apart */
-      float v = 0.34f + 0.24f * its;
-      Push(0, I_CLAP, 0, v); Push(10, I_CLAP, 0, v * 0.8f); Push(21, I_CLAP, 0, v * 0.6f);
-    }
-
-    /* bass: the genre groove on the chord root, in its own register */
-    if (bass_gate_ > 0 && --bass_gate_ == 0) bass_.NoteOff();
-    if (lay & L_BASS) {
-      const Groove* gr = genre_ == G_CITYPOP ? kBassCity : genre_ == G_SYNTHCORE ? kBassCore : kBassWave;
-      int ng = genre_ == G_CITYPOP ? 6 : genre_ == G_SYNTHCORE ? 8 : 6;
-      for (int k = 0; k < ng; k++) if (gr[k].step == s) {
-        int m = 36 + ((root - 0 + 12) % 12);
-        if (m > 47) m -= 12;
-        bass_.NoteOn(Mtof(static_cast<float>(m + gr[k].off)), 0.72f + 0.18f * its);
-        bass_gate_ = 2;
+      if (intro || mode_ == 1) {
+        if (s % 4 == 2) ohat_.NoteOn(330.0f, (intro ? 0.5f : 0.3f) + jit);     /* the offbeat open hat */
+        if (mode_ == 1 && s % 2 == 0) hat_.NoteOn(330.0f, 0.18f);
+      } else {
+        if (s % 4 == 2) ohat_.NoteOn(330.0f, 0.4f + jit);
+        else hat_.NoteOn(330.0f, (s % 2 ? 0.28f : 0.4f) + jit);
       }
     }
+    if ((lay & L_PERC) && (s == 4 || s == 12)) {
+      /* a clap is three snares 10 ms apart */
+      Push(0, I_CLAP, 0, 0.55f); Push(10, I_CLAP, 0, 0.45f); Push(21, I_CLAP, 0, 0.35f);
+    }
+
+    /* the acid line, its filter sweeping like somebody is riding the knob */
+    if ((lay & L_ACID) || (lay & L_SUB)) {
+      float cut;
+      if (lay & L_SUB) cut = 260.0f;
+      else if (intro) cut = 220.0f + 1700.0f * (bar_ * 16 + s) / 128.0f;          /* the intro opens up */
+      else cut = 450.0f + 1500.0f * (0.5f + 0.5f * sinf(step_ * 6.2831853f / 128.0f));
+      acid_p_.cutoff = cut;
+      acid_p_.env_amount = (lay & L_SUB) ? 0.4f : (ACID_A[s] ? 3.2f : 2.0f);
+      acid_.SetParams(acid_p_);
+      int base = 36 + root;                     /* E2 = 40 */
+      if (base > 47) base -= 12;
+      if (lay & L_SUB) {
+        if (s == 0) acid_.NoteOn(Mtof(static_cast<float>(base)), 0.6f);
+        if (s == 12) acid_.NoteOff();
+      } else if (ACID_N[s] >= 0) {
+        acid_.NoteOn(Mtof(static_cast<float>(base + ACID_N[s])), ACID_A[s] ? 0.95f : 0.7f);
+        acid_gate_ = (s < 15 && ACID_N[s + 1] < 0) ? 2 : 1;
+      }
+    }
+    if (acid_gate_ > 0 && --acid_gate_ == 0 && !(lay & L_SUB)) acid_.NoteOff();
 
     /* pad: one held chord per bar, voice-led */
     int chord_id = bar_ * 100 + section_;
     if ((lay & L_PAD) && s == 0 && chord_id != last_chord_) { PadChord(root, minor, 0.62f); last_chord_ = chord_id; }
     if (!(lay & L_PAD) && npad_) PadRelease();
 
-    /* arp: chord tones rising, eighths, sixteenths and bouncing when it is busy */
-    if (lay & L_ARP) {
-      bool fast = its > 0.7f;
-      if (fast || s % 2 == 0) {
-        int tones[4] = {root, root + (minor ? 3 : 4), root + 7, root + 12};
-        int idx = fast ? s : s / 2;
-        int k = fast ? ((idx / 4) % 2 ? 3 - idx % 4 : idx % 4) : idx % 4;
-        int m = 64 + ((tones[k] - 4 + 24) % 24);
-        arp_.NoteOn(note_id_++ & 0xfff, Mtof(static_cast<float>(m)), (fast ? 0.42f : 0.5f) + jit, frame_);
+    /* the hypnotic arpeggio: three notes against four in the night,
+     * a slow rising four in the lobby */
+    if (lay & L_HYPNO) {
+      int third = root + (minor ? 3 : 4), fifth = root + 7;
+      if (mode_ == 1) {
+        if (s % 2 == 0) {
+          int fig[4] = {root, third, fifth, root + 12};
+          int m = 72 + ((fig[(s / 2) % 4] - 0 + 12) % 12) - 12 + (s / 2 % 4 == 3 ? 12 : 0);
+          hypno_.NoteOn(note_id_++ & 0xfff, Mtof(static_cast<float>(m)), 0.45f + jit, frame_);
+        }
+      } else {
+        int fig[3] = {root + 12, fifth, third + 12};
+        int m = 64 + ((fig[step_ % 3] - 4 + 24) % 24);
+        float acc = s % 4 == 0 ? 0.6f : 0.42f;
+        hypno_.NoteOn(note_id_++ & 0xfff, Mtof(static_cast<float>(m)), acc + jit, frame_);
       }
     }
 
-    /* the written lead, and on the second pass a counter line a third below */
+    /* rave stabs: a minor seventh on the downbeat and the offbeat after it */
+    if ((lay & L_STAB) && (s == 0 || s == 6 || (bar_ % 2 == 1 && s == 10))) {
+      int ch[4] = {root, root + (minor ? 3 : 4), root + 7, root + (minor ? 10 : 11)};
+      for (int k = 0; k < 4; k++) stab_.NoteOn(note_id_++ & 0xfff, Mtof(static_cast<float>(60 + (ch[k] + 8) % 12 + 4)), 0.55f, frame_);
+    }
+
+    /* the written lead, and in the second drops a counter line a third below */
     if (lay & L_LEAD) {
       int at = bar_ * 16 + s;
-      int oct = (second && mode_ == 2 && section_ == static_cast<int>(sizeof NIGHT / sizeof NIGHT[0]) - 1) ? 12 : 0;
-      if (mode_ == 1) oct = -12;
+      int oct = (mode_ == 2 && pass_ > 0 && (lay & L_COUNTER)) ? 12 : 0;
       for (int k = 0; k < sec->nlead; k++) {
         const Note& nt = sec->lead[k];
         if (nt.step == at) {
           if (nt.midi) {
-            lead_.NoteOn(Mtof(static_cast<float>(nt.midi + oct)), mode_ == 1 ? 0.55f : 0.72f);
-            if ((lay & L_COUNTER) || (second && mode_ == 2 && (lay & L_SNARE)))
-              counter_.NoteOn(Mtof(static_cast<float>(DiatonicBelow(nt.midi) + oct - 12)), 0.5f);
+            lead_.NoteOn(Mtof(static_cast<float>(nt.midi + oct)), mode_ == 1 ? 0.5f : 0.7f);
+            if (lay & L_COUNTER) counter_.NoteOn(Mtof(static_cast<float>(DiatonicBelow(nt.midi) + oct - 12)), 0.5f);
           } else { lead_.NoteOff(); counter_.NoteOff(); }
           lead_off_ = nt.dur;
         }
@@ -514,31 +557,39 @@ class Band {
     }
   }
 
+  /* stem gains are set from measured levels: Bellows engines differ by 10x in
+   * native loudness, so these are not the reference rack's numbers */
   void RenderSpan(float* l, float* r, int from, int n) {
     for (int i = 0; i < n; ++i) { rl_[i] = rr_[i] = yl_[i] = yr_[i] = 0.0f; }
     const float m = mode_ <= 0 ? 0.0f : 1.0f;
-    Mix(kick_, 0.88f, 0.0f, 0.0f, 0.0f, l, r, from, n);
-    Mix(snare_, 2.2f, 0.9f, 0.0f, 0.0f, l, r, from, n);
-    Mix(clap_, 0.9f * m, 0.8f, 0.0f, -0.16f, l, r, from, n);
-    Mix(hat_, 5.0f, 0.0f, 0.0f, 0.14f, l, r, from, n);
-    Mix(ohat_, 3.5f, 0.6f, 0.0f, 0.14f, l, r, from, n);
-    /* bass through its saturator before the mix */
+    Mix(kick_, 0.9f, 0.0f, 0.0f, 0.0f, l, r, from, n);
+    Mix(snare_, 2.2f, 0.7f, 0.0f, 0.0f, l, r, from, n);
+    Mix(clap_, 1.0f * m, 0.9f, 0.0f, -0.16f, l, r, from, n);
+    Mix(hat_, 8.0f, 0.0f, 0.0f, 0.18f, l, r, from, n);
+    Mix(ohat_, 3.2f, 0.4f, 0.0f, -0.12f, l, r, from, n);
+    /* the acid line through its saturator, with a little echo */
     for (int i = 0; i < n; ++i) { bl_[i] = 0.0f; br_[i] = 0.0f; }
-    bass_.Process(bl_, br_, 0, n);
-    bass_sat_.Process(bl_, br_, 0, n);
-    for (int i = 0; i < n; ++i) { l[from + i] += 0.46f * m * bl_[i]; r[from + i] += 0.46f * m * br_[i]; }
-    Mix(pad_, 0.03f * m, 0.08f * m, 0.0f, 0.0f, l, r, from, n);
-    Mix(arp_, 0.55f * m, 0.55f * m, 0.9f * m, -0.24f, l, r, from, n);
+    acid_.Process(bl_, br_, 0, n);
+    acid_sat_.Process(bl_, br_, 0, n);
+    const float acid_gain = mode_ == 1 ? 0.3f : 1.5f;   /* the lobby's soft sub, not an acid line */
+    for (int i = 0; i < n; ++i) {
+      float a = bl_[i] * m, b = br_[i] * m;
+      l[from + i] += acid_gain * a; r[from + i] += acid_gain * b;
+      yl_[i] += 0.2f * a * (mode_ == 1 ? 0 : 1); yr_[i] += 0.2f * b * (mode_ == 1 ? 0 : 1);
+    }
+    Mix(pad_, 0.022f * m, 0.08f * m, 0.0f, 0.0f, l, r, from, n);
+    Mix(stab_, 0.24f * m, 0.3f * m, 0.15f * m, 0.0f, l, r, from, n);
+    Mix(hypno_, 0.5f * m, 0.35f * m, 0.9f * m, -0.22f, l, r, from, n);
     /* lead through its chorus */
     for (int i = 0; i < n; ++i) { bl_[i] = 0.0f; br_[i] = 0.0f; }
     lead_.Process(bl_, br_, 0, n);
     chorus_.Process(bl_, br_, 0, n);
     for (int i = 0; i < n; ++i) {
       float a = bl_[i] * m, b = br_[i] * m;
-      l[from + i] += 0.42f * a; r[from + i] += 0.42f * b;
-      rl_[i] += 0.4f * a; rr_[i] += 0.4f * b; yl_[i] += 0.45f * a; yr_[i] += 0.45f * b;
+      l[from + i] += 0.36f * a; r[from + i] += 0.36f * b;
+      rl_[i] += 0.35f * a; rr_[i] += 0.35f * b; yl_[i] += 0.4f * a; yr_[i] += 0.4f * b;
     }
-    Mix(counter_, 0.1f * m, 0.45f * m, 0.0f, 0.24f, l, r, from, n);
+    Mix(counter_, 0.06f * m, 0.25f * m, 0.0f, 0.24f, l, r, from, n);
     /* effects sit above the music */
     Mix(bells_, 0.13f, 0.12f, 0.06f, 0.0f, l, r, from, n);
     Mix(sfx_pluck_, 1.1f, 0.5f, 0.0f, 0.0f, l, r, from, n);
@@ -555,20 +606,22 @@ class Band {
     frame_ += static_cast<uint32_t>(n);
   }
 
-  bellows::Rng rng_snare_, rng_clap_, rng_bass_, rng_str_, rng_sfx_, rng_buzz_, rng_ctr_;
+  bellows::Rng rng_snare_, rng_clap_, rng_acid_, rng_str_, rng_sfx_, rng_buzz_, rng_ctr_;
   bellows::Kick kick_;
   bellows::Snare snare_, clap_;
   bellows::Hat hat_, ohat_;
-  bellows::Va bass_, buzz_, counter_;
+  bellows::Va acid_, buzz_, counter_;
+  bellows::Va::Params acid_p_;
   bellows::VoicePool<bellows::Fm, 6> pad_;
-  bellows::VoicePool<String, 6> arp_;
+  bellows::VoicePool<bellows::Fm, 4> stab_;
+  bellows::VoicePool<String, 6> hypno_;
   bellows::VoicePool<String, 4> sfx_pluck_;
   bellows::VoicePool<Bell, 6> bells_;
   Bell lead_;
   bellows::Plate<> plate_;
   bellows::StereoDelay<500> delay_;
   bellows::Chorus<> chorus_;
-  bellows::Saturator<> bass_sat_;
+  bellows::Saturator<2> acid_sat_;
   bellows::Compressor<> comp_;
   bellows::Limiter<> limiter_;
 
@@ -584,9 +637,9 @@ class Band {
   int npad_ = 0;
   float pad_center_ = 62.0f;
   float sr_ = 48000.0f;
-  Genre genre_ = G_CITYPOP;
+  Genre genre_ = G_AMBIENT;
   int mode_ = -1, pending_mode_ = -1, samples_per_step_ = 1, countdown_ = 0;
-  int step_ = 0, bar_ = 0, section_ = 0, pass_ = 0, bass_gate_ = 0, lead_off_ = 0, last_chord_ = -1;
+  int step_ = 0, bar_ = 0, section_ = 0, pass_ = 0, acid_gate_ = 0, lead_off_ = 0, last_chord_ = -1;
   int note_id_ = 0;
   uint32_t frame_ = 0;
   bool ready_ = false;

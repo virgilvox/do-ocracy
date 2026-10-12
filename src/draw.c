@@ -319,10 +319,15 @@ static void players_overlay(void) {
       int bx = fx - tot / 2, by = fy + 16;
       hud_rect(bx + 4, by + 4, tot, 32, C_SHADOW, 220);
       hud_rect(bx, by, tot, 32, C_CHAR, 240);
+      /* holding the button fills the prompt itself: your progress is always under your feet */
+      float done = p->work > 0 && p->work_need > 0 ? fminf(1, p->work / p->work_need) : 0;
+      if (done > 0) {
+        hud_rect(bx, by, (int)(tot * done), 32, c, 90);
+        hud_rect(bx, by + 26, (int)(tot * done), 6, c, 255);
+      }
       hud_frame(bx, by, tot, 32, 2, c, 255);
-      keycap(bx + 6, by + 4, g, c, C_TAPE);
-      hud_text(F_MONO, bx + gw + 16, by + 4, p->prompt, karma ? C_INK_OK : C_HAZARD, 255, AL_LEFT);
-      if (p->work > 0) hud_ring(sx, sy - 52, 17, 6, fminf(1, p->work / 2.4f), c, 255);
+      keycap(bx + 6, by + 3, g, done > 0 ? C_BONE : c, C_TAPE);
+      hud_text(F_MONO, bx + gw + 16, by + 3, p->prompt, done > 0 ? C_BONE : karma ? C_INK_OK : C_HAZARD, 255, AL_LEFT);
     }
     if (p->flash > 0) {
       int a = p->flash < 0.4f ? (int)(p->flash / 0.4f * 255) : 255;
@@ -434,12 +439,25 @@ static void meter(int x, int y, int w, const char *name, const char *rule, float
 static void top_bar(void) {
   char clk[16];
   clock_str(clk, sizeof clk);
-  hud_panel(16, 14, 286, 76, C_SLAB, C_STEEL_HI);
+  hud_panel(16, 14, 294, 76, C_SLAB, C_STEEL_HI);
   hud_logo(24, 20, 64, C_BONE);
-  eyebrow(98, 24, G.phase == PH_NIGHT ? "HYH TUESDAY" : "CLOCKING IN", C_ASH, AL_LEFT);
-  hud_text(F_H2, 96, 40, G.phase == PH_NIGHT ? clk : "7:00 PM", C_BONE, 255, AL_LEFT);
-  hud_text(F_MONO_S, 290, 66, "AZ", C_SMOKE, 255, AL_RIGHT);
-  if (G.phase == PH_NIGHT) hud_bar(24, 84, 270, 4, G.t / G.night_len, C_HAZARD, C_CHAR);
+  if (G.phase != PH_NIGHT) eyebrow(98, 24, "CLOCKING IN", C_ASH, AL_LEFT);
+  hud_text(F_H2, 96, 36, G.phase == PH_NIGHT ? clk : "7:00 PM", C_BONE, 255, AL_LEFT);
+  if (G.phase == PH_NIGHT) {
+    /* how much night is left: a countdown and a bar with the hours on it */
+    int left = (int)ceilf(G.night_len - G.t);
+    if (left < 0) left = 0;
+    bool closing = left <= 30;
+    char lt[24];
+    snprintf(lt, sizeof lt, "%d:%02d LEFT", left / 60, left % 60);
+    eyebrow(98, 24, lt, closing && fmodf(T, 0.8f) < 0.5f ? C_HAZARD : C_ASH, AL_LEFT);
+    /* the night, 7 to 11, as a bar along the bottom of the clock panel */
+    float f = G.t / G.night_len;
+    int bx = 96, bw = 206, by = 78;
+    hud_rect(bx, by, bw, 8, C_CHAR, 255);
+    hud_rect(bx, by, (int)(bw * fminf(1, f)), 8, closing ? C_RUST : C_HAZARD, 255);
+    for (int h = 1; h < 4; h++) hud_rect(bx + bw * h / 4, by, 2, 8, C_STEEL_HI, 255);
+  } else hud_text(F_MONO_S, 290, 66, "AZ", C_SMOKE, 255, AL_RIGHT);
 
   hud_panel(330, 14, 600, 76, C_SLAB, C_STEEL_HI);
   float c = G.clutter > 100 ? 100 : G.clutter;
@@ -716,11 +734,12 @@ void draw_hud(float dt) {
   station_labels();
   npcs_overlay();
   fx_draw(dt);
-  players_overlay();
   top_bar();
   if (G.phase == PH_LOBBY) lobby_overlay();
   else join_strip(950, 14);
   if (!danger()) { ticker_band(); if (G.ticker_t <= 0) coach(); }
   player_cards();
   toasts(16, HUD_H - 100);
+  /* last, so nothing on screen can ever hide your own name, prompt or progress */
+  players_overlay();
 }

@@ -49,6 +49,8 @@ The two keyboard players read raw keys, which the browser player and the Node ho
 - Every station has an amber edge if it makes clout or a teal edge if it is karma work, and a red ! when something is wrong there.
 - Messes on the floor get a ring and a label (SWEEP ME, MOP ME, UNPLUG ME). Junk says TRASH ME. Newbies say SAY HI, then LEAVING!
 - The first forty seconds of every night, a coach card walks through the five things to know.
+- Holding a button fills the prompt under your feet, so you can see your progress wherever you stand. Player markers draw on top of everything.
+- The clock panel counts down the time left in the night, with a progress bar marked in hours. All messages share one slim bar under the top panels, over the back wall.
 - Every event banner says what it means ("HABOOB! Dust on the floor and in the laser. Sweep it.").
 - The lobby and the attract screen show a how-to board and a button chart.
 
@@ -113,13 +115,13 @@ PACE=1 node tools/shot.mjs ... & node tools/phone-sim.mjs ROOM "NAME"     # a fa
 
 ## The music
 
-Three written cues, all in E minor, all synthesized live in the cart (previews: [lobby](docs/music-lobby.m4a), [night](docs/music-night.m4a), [closing time](docs/music-closing.m4a)):
+A love letter to the Hackers (1995) soundtrack, synthesized live in the cart: Orbital's dreamy arpeggios, Underworld's hypnotic sixteenths, the Prodigy's breakbeats and rave stabs, and a squelching acid line under all of it. Previews: [lobby](docs/music-lobby.m4a), [night](docs/music-night.m4a), [closing time](docs/music-closing.m4a).
 
-- **Coffee and Coworking** (lobby and attract): city pop, 112 bpm, half-time kick, a lazy arp and a soft melody.
-- **Hack Your Hackerspace** (the night): synthwave, 140 bpm. Intro on pad and arp, a verse without snare, a chorus with everything, a bigger second verse, a stripped bridge (Am C G B, borrowing the D#) so the last chorus lands. The second time through, the hats go to sixteenths and a counter melody comes in a third below the hook, and the last chorus goes up an octave.
-- **Who Is Doing The Dishes** (the last 30 seconds): synthcore, 168 bpm, the hook on a loop with every layer.
+- **Halcyon Tuesday** (lobby and attract): ambient electronica, 120 bpm. A slow rising arpeggio through long echoes, glassy bell melody, a soft kick and sub coming in on the second half.
+- **Hack the Planet** (the night): acid breakbeat, 136 bpm, E minor with a Phrygian F. The intro is offbeat hats and an acid line whose filter opens over eight bars; the build adds a four-on-the-floor kick, claps and a three-against-four hypnotic arpeggio, with a snare roll into the drop. The drop is a breakbeat with ghost notes, rave stabs and the riff. Then a pads-only breakdown with a dreamy melody and a B major turnaround, and the second drop adds a counter line under the riff.
+- **Mess the Planet** (the last 30 seconds): a 160 bpm breakbeat rush with everything on.
 
-The songs are data at the top of `src/audio_bellows.cpp` in doot-doot-revolution's note format (`E5:4 G5:2 | ...`, lengths in sixteenths), so writing a new one is editing strings.
+The songs are data at the top of `src/audio_bellows.cpp` in doot-doot-revolution's note format (`E5:2 G5:2 | ...`, lengths in sixteenths), with the acid line and breakbeat as 16-step arrays, so writing a new one is editing strings.
 
 ## How it is made
 

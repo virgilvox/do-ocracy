@@ -603,6 +603,7 @@ static void player_update(player_t *p, float dt) {
 
   cand_t c = find_target(p);
   float need = c.kind != W_NONE ? hold_time(c.kind, c.ref) : 0;
+  p->work_need = need;
   bool working = need > 0 && (p->btn & IN_A) && p->work_kind == c.kind && p->work_ref == c.ref;
 
   if (need > 0 && (p->btn & IN_A)) {

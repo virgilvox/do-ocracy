@@ -86,6 +86,7 @@ typedef struct {
   float bob;
   int hold;            /* item index or -1 */
   float work;          /* progress on a hold-A task */
+  float work_need;     /* how long that task takes */
   int work_kind, work_ref;
   uint32_t btn, prev;
   float sx, sy;        /* stick, -1..1 */
