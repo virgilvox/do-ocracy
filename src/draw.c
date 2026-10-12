@@ -187,7 +187,7 @@ static void station_labels(void) {
       case ST_LASER:
         pay = 1;
         if (s->state == S_BROKEN) { snprintf(st, sizeof st, "TOO DUSTY. HOLD TO CLEAN"); c = C_INK_ERR; alarm = true; pay = 2; }
-        else if (s->state == S_LOADED || s->state == S_BUSY) { snprintf(st, sizeof st, "LOADED. HOLD TO CUT"); c = C_HAZARD; }
+        else if (s->state == S_LOADED) { snprintf(st, sizeof st, G.laser_cutting > 0 ? "CUTTING" : "LOADED. HOLD TO CUT"); c = C_HAZARD; }
         else snprintf(st, sizeof st, "BRING PLYWOOD  DUST %d%%", (int)s->dust);
         break;
       case ST_PRINT1: case ST_PRINT2:
@@ -221,7 +221,7 @@ static void station_labels(void) {
       float dx = fabsf(p->x - s->x) - s->hw, dz = fabsf(p->z - s->z) - s->hd;
       if (dx < 2.2f && dz < 2.2f) near = true;
     }
-    bool ready = (i == ST_LASER && (s->state == S_LOADED || s->state == S_BUSY)) || ((i == ST_PRINT1 || i == ST_PRINT2) && s->state == S_DONE);
+    bool ready = (i == ST_LASER && s->state == S_LOADED) || ((i == ST_PRINT1 || i == ST_PRINT2) && s->state == S_DONE);
     if (!(alarm || ready || near)) st[0] = 0;
     uint32_t edge = pay == 1 ? C_HAZARD : pay == 2 ? C_LIVE : C_STEEL_HI;
     int w = hud_text_w(F_MONO_S, s->label);

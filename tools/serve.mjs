@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'web');
-const PORT = Number(process.argv[2] || 8080);
+const PORT = Number(process.argv[2] || 8747);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.svg': 'image/svg+xml',
   '.wasc': 'application/octet-stream', '.wasm': 'application/wasm', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png' };
 

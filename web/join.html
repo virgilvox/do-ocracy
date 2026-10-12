@@ -146,7 +146,7 @@
   $('name').value = store.get('hsx.name') || '';
   if (hashRoom) setTimeout(() => $('name').focus(), 50);
 
-  let client = null, room = '', welcomed = false, joinTimer = null, beat = null;
+  let client = null, room = '', welcomed = false, holding = false, joinTimer = null, beat = null;
   let btn = 0, sx = 0, sy = 0, lastSent = '', lastAt = 0;
   const PHASES = ['Attract', 'Clocking in', 'Tuesday night', 'Lights out'];
 
@@ -176,16 +176,16 @@
     const k = value[0], body = value.slice(1);
     if (k === 'W') {
       const [slot, color, name] = body.split('|');
-      welcomed = true; clearInterval(joinTimer);
+      welcomed = true; holding = false; clearInterval(joinTimer);
       document.documentElement.style.setProperty('--me', '#' + color);
       $('slot').textContent = `Player ${slot}`;
       $('pname').textContent = name;
       showPad(); buzz(60);
       toast('YOU ARE IN. LOOK FOR YOUR COLOUR.');
     } else if (k === 'S') {
-      const [clout, karma, holding, hint] = body.split('|');
+      const [clout, karma, carrying, hint] = body.split('|');
       $('clout').textContent = clout; $('karma').textContent = karma;
-      $('hint').textContent = hint ? `A: ${hint}` : (holding ? `CARRYING ${holding}` : '');
+      $('hint').textContent = hint ? `A: ${hint}` : (carrying ? `CARRYING ${carrying}` : '');
     } else if (k === 'P') {
       const [phase, left, clutter, vibe] = body.split('|').map(Number);
       $('phase').textContent = phase === 2 && left > 0 ? `${PHASES[2]}  ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : PHASES[phase] || '';
@@ -196,6 +196,7 @@
     } else if (k === 'Z') buzz(Number(body) || 40);
     else if (k === 'F') { $('msg').textContent = 'The room is full (8 members). Wait for the next Tuesday.'; showJoin(); }
     else if (k === 'R') { welcomed = false; startJoin(); }
+    else if (k === 'H') { holding = true; $('msg').textContent = 'The night just ended. You are in the next one.'; $('go').textContent = 'Next round soon'; }
   }
 
   function startJoin() {
@@ -216,12 +217,14 @@
       client = new CLASP.Clasp(RELAY, { name: 'do-ocracy-phone', reconnect: true });
       await client.connect();
       client.on(`/hsx/${room}/out/**`, onMessage);
-      client.onReconnect && client.onReconnect(() => { client.on(`/hsx/${room}/out/**`, onMessage); startJoin(); });
+      /* the client re-subscribes by itself after a reconnect; just say what is going on */
+      client.onDisconnect && client.onDisconnect(() => { $('phase').textContent = 'Connection lost, retrying'; });
+      client.onConnect && client.onConnect(() => { if (welcomed) $('phase').textContent = 'Back online'; });
       startJoin();
       clearInterval(beat);
       beat = setInterval(() => welcomed && sendInput(true), 400);
       $('go').textContent = 'Waiting for the cabinet';
-      setTimeout(() => { if (!welcomed) { $('msg').textContent = 'No answer. Check the code, or the cabinet may be offline.'; $('go').textContent = 'Clock in'; } }, 8000);
+      setTimeout(() => { if (!welcomed && !holding) { $('msg').textContent = 'No answer. Check the code, or the cabinet may be offline.'; $('go').textContent = 'Clock in'; } }, 8000);
     } catch (e) {
       $('msg').textContent = 'Could not reach the relay. Check your connection.';
       $('go').textContent = 'Clock in';

@@ -12,17 +12,17 @@ It is 7 PM on a Tuesday. The doors are open, the laser is calling, and the sink 
 
 Everybody scores two things:
 
-- **CLOUT** is for you. Cut something on PEWPEW 9000, run a print on Loafer or Dr. Strange, solder something at the bench, cut a sticker on Sir Cutsalot (always free). Carry it to Show & Tell.
-- **KARMA** is for the space. Wash the dishes. Haul scrap, empty Club-Mate bottles and print spaghetti to the trash. Move donations (a very heavy CRT, three broken printers, a chest freezer that runs fine) to the Free Pile. Unclog the printers. Clean the laser when it is covered in dust. Unplug the daisy-chained power strips. Say hi to the newbies.
+- CLOUT is for you. Cut something on PEWPEW 9000, run a print on Loafer or Dr. Strange, solder something at the bench, cut a sticker on Sir Cutsalot (always free). Carry it to Show & Tell.
+- KARMA is for the space. Wash the dishes. Haul scrap, empty Club-Mate bottles and print spaghetti to the trash. Move donations (a very heavy CRT, three broken printers, a chest freezer that runs fine) to the Free Pile. Unclog the printers. Clean the laser when it is covered in dust. Unplug the daisy-chained power strips. Say hi to the newbies.
 
 The space has two meters:
 
-- **CLUTTER** goes up with every mess on the floor, every dirty dish, every broken machine. At 100 the fire marshal is on the way. Five seconds later the night is over.
-- **VIBE** drains when clutter is high, when a newbie walks out because nobody said hi, and when the landlord sees the Free Pile. At 0 everybody burns out.
+- CLUTTER goes up with every mess on the floor, every dirty dish, every broken machine. At 100 the fire marshal is on the way. Five seconds later the night is over.
+- VIBE drains when clutter is high, when a newbie walks out because nobody said hi, and when the landlord sees the Free Pile. At 0 everybody burns out.
 
 Survive until 11 PM and the space lives to see another Tuesday. Then the scoreboard ranks everyone by clout and hands out awards. Most clout with the least karma gets GLAMOUR BIAS. Most karma gets JANITORIAL CO-OP, and a banner that says they were the real winner. Whoever did nothing gets LURKER: "Paid dues. Said nothing. Kept the lights on."
 
-If the space closes, every point of clout is void. Karma stands. That is the whole design: the commons dilemma with a laser cutter. Glamour work is fun and pays you. Janitorial work is boring and pays the room. The laser leaves scrap. The prints jam. Club-Mate makes you fast and then you litter. Every newbie you greet becomes a member who quietly cleans up after everyone, for a while, until they drift away (the four year sine wave).
+If the space closes, every point of clout is void. Karma stands. It is the commons dilemma with a laser cutter. Glamour work is fun and pays you. Janitorial work is boring and pays the room. The laser leaves scrap. The prints jam. Club-Mate makes you fast and then you litter. Every newbie you greet becomes a member who quietly cleans up after everyone, for a while, until they drift away (the four year sine wave).
 
 The night throws events at you: IT IS 118 OUTSIDE, HABOOB, SOMEBODY BROUGHT TACOS, LANDLORD WALKTHROUGH, ANY PARTICULAR REASON WHY DR. STRANGE IS DOWN?, and the occasional LINUX NIGHT: CANCELED, which does nothing. X makes a proposal ("I think we should... form a committee"). It earns zero clout and says so.
 
@@ -43,20 +43,22 @@ The floor and walls are textures painted at startup with the HUD's own drawing r
 | Keyboard player 2 | arrows | . (period) | , (comma) | / (slash) | Enter |
 | Phone | drag the stick box | A | B | X | Start the night |
 | Keyboard under RetroArch | arrows | Z | X | A | Enter |
+| Keyboard in the desktop wasmcart player | arrows or WASD | X or Space | Z | | Enter |
 
 Press your "do it" button to clock in. The night starts when someone presses Start or Enter, or by itself 25 seconds after the first person joins. Drop in any time.
 
-The two keyboard players read raw keys, which the browser player and the Node host deliver. Under RetroArch (Batocera) the keyboard arrives as RetroPad 1 with RetroArch's own bindings instead, shown in the last row.
+The two keyboard players read raw keys, which the browser player delivers. Under RetroArch (Batocera) and in the desktop `npx wasmcart` player, the keyboard arrives as pad 1 with that host's own bindings instead, shown in the last two rows. Someone who clocks in on a pad or the keyboard and then does nothing for 75 seconds goes home, so the cabinet can fall back to its demo.
 
 ## Never guess what to do
 
-- Whatever you are carrying gets an arrow on the floor and a highlight on the place it goes ("SHOW IT OFF AT SHOW & TELL", "THROW IT IN THE TRASH").
+- Whatever you are carrying gets arrows on the floor, a highlight in your colour on the place it goes, and a short label over your head ("TO SHOW & TELL", "TO THE TRASH").
 - Under your feet is a prompt with your own button on it: A for a pad, SPACE or . for the keyboard.
 - Every station has an amber edge if it makes clout or a teal edge if it is karma work, and a red ! when something is wrong there.
 - Messes on the floor get a ring and a label (SWEEP ME, MOP ME, UNPLUG ME). Junk says TRASH ME. Newbies say SAY HI, then LEAVING!
 - The first forty seconds of every night, a coach card walks through the five things to know.
 - Holding a button fills the prompt under your feet, so you can see your progress wherever you stand. Player markers draw on top of everything.
-- The clock panel counts down the time left in the night, with a progress bar marked in hours. All messages share one slim bar under the top panels, over the back wall.
+- The clock counts down the time left in the night, with a progress bar marked in hours. Messages get their own strip under the top row, above the room, so they never cover the floor.
+- Labels in the room never stack: each one moves to the nearest free spot.
 - Every event banner says what it means ("HABOOB! Dust on the floor and in the laser. Sweep it.").
 - The lobby and the attract screen show a how-to board and a button chart.
 
@@ -100,7 +102,7 @@ npm install
 ./build.sh                 # build/do-ocracy.wasc and web/do-ocracy.wasc
 ```
 
-The cart is about 950 KB: three.c, the game, the Bellows engine, five fonts and a config file.
+The cart is about 1.1 MB: three.c, the game, the Bellows engine, four fonts and a config file. The floor and wall textures are painted at startup, so there are no images in it.
 
 Check it the way romdev does (`npx romdevtools`, then from any MCP client or plain HTTP):
 
@@ -123,9 +125,9 @@ PACE=1 node tools/shot.mjs ... & node tools/phone-sim.mjs ROOM "NAME"     # a fa
 
 A love letter to the Hackers (1995) soundtrack, synthesized live in the cart: Orbital's dreamy arpeggios, Underworld's hypnotic sixteenths, the Prodigy's breakbeats and rave stabs, and a squelching acid line under all of it. Previews: [lobby](docs/music-lobby.m4a), [night](docs/music-night.m4a), [closing time](docs/music-closing.m4a).
 
-- **Halcyon Tuesday** (lobby and attract): ambient electronica, 120 bpm. A slow rising arpeggio through long echoes, glassy bell melody, a soft kick and sub coming in on the second half.
-- **Hack the Planet** (the night): acid breakbeat, 136 bpm, E minor with a Phrygian F. The intro is offbeat hats and an acid line whose filter opens over eight bars; the build adds a four-on-the-floor kick, claps and a three-against-four hypnotic arpeggio, with a snare roll into the drop. The drop is a breakbeat with ghost notes, rave stabs and the riff. Then a pads-only breakdown with a dreamy melody and a B major turnaround, and the second drop adds a counter line under the riff.
-- **Mess the Planet** (the last 30 seconds): a 160 bpm breakbeat rush with everything on.
+- Halcyon Tuesday (lobby and attract): ambient electronica, 120 bpm. A slow rising arpeggio through long echoes, glassy bell melody, a soft kick and sub coming in on the second half.
+- Hack the Planet (the night): acid breakbeat, 136 bpm, E minor with a Phrygian F. The intro is offbeat hats and an acid line whose filter opens over eight bars; the build adds a four-on-the-floor kick, claps and a three-against-four hypnotic arpeggio, with a snare roll into the drop. The drop is a breakbeat with ghost notes, rave stabs and the riff. Then a pads-only breakdown with a dreamy melody and a B major turnaround, and the second drop adds a counter line under the riff.
+- Mess the Planet (the last 30 seconds): a 160 bpm breakbeat rush with everything on.
 
 The songs are data at the top of `src/audio_bellows.cpp` in doot-doot-revolution's note format (`E5:2 G5:2 | ...`, lengths in sixteenths), with the acid line and breakbeat as 16-step arrays, so writing a new one is editing strings.
 
@@ -138,7 +140,7 @@ The songs are data at the top of `src/audio_bellows.cpp` in doot-doot-revolution
 | [src/world.c](src/world.c) | The 3D space in [three.c](https://github.com/monteslu/three.c): the three.js API in C, drawing three.js r186's own programs |
 | [src/draw.c](src/draw.c), [src/hud.c](src/hud.c) | The 2D layer in HeatSync's GANTRY theme: stb_truetype text, panels, caution tape, the QR, and the HeatSync mark rasterized from its official paths |
 | [src/audio_bellows.cpp](src/audio_bellows.cpp) | Music and effects on [Bellows](https://bellows.live) (bellows-embedded, the C++ port of its DSP core), written the way doot-doot-revolution writes songs: sections, a chord per bar, written hooks, layers in and out, fills, voice-led pads, reverb and delay sends, a compressor and limiter |
-| [src/net.c](src/net.c) | The CLASP client, about 150 lines of C |
+| [src/net.c](src/net.c) | The CLASP client, under 200 lines of C |
 | [src/content.h](src/content.h) | Every word in the game. Edit freely |
 | [tools/states.txt](tools/states.txt) | The r186 material states the game draws; `build.sh` turns them into a program table with three.c's `gen-project-table.mjs` |
 | [web/](web/) | The browser player and the phone controller |

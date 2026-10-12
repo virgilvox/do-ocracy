@@ -128,6 +128,7 @@ typedef struct {
   float next_event, next_newbie, next_dish, next_donation;
   int event;           /* index into the event table, -1 none */
   float event_t, heat, landlord;
+  float laser_cutting;  /* seconds left of the cutting glow: someone held A on the laser this frame */
   char ticker[96];
   char ticker_sub[96];
   float ticker_t;

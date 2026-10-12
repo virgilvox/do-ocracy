@@ -179,6 +179,7 @@ static void give(player_t *p, int item) {
 
 static bool adding_bot;
 static void clear_world(void);
+static void calm_meters(void);
 
 /* ── geometry ────────────────────────────────────────────────────── */
 
@@ -236,7 +237,7 @@ int game_add_player(bool phone, int pad, const char *pid, const char *name) {
     clear_world();
     G.attract = false;
     G.phase = PH_LOBBY; G.t = 0;
-    G.ticker_t = 0;
+    calm_meters();
     for (int i = 0; i < TOASTS; i++) toast_t[i] = 0;
     audio_music(1);
   }
@@ -514,7 +515,7 @@ static bool goal_valid(player_t *p) {
     case W_GREET: return N[r].alive && N[r].state == 1 && p->hold < 0;
     case W_DEPOSIT: return p->hold >= 0;
     case W_LOAD: return p->hold >= 0 && S[ST_LASER].state == S_IDLE;
-    case W_CUT: return p->hold < 0 && (S[ST_LASER].state == S_LOADED || S[ST_LASER].state == S_BUSY);
+    case W_CUT: return p->hold < 0 && S[ST_LASER].state == S_LOADED;
     case W_LUMBER: return p->hold < 0 && S[ST_LASER].state == S_IDLE;
     case W_CLEAN_LASER: return p->hold < 0 && S[ST_LASER].state == S_BROKEN;
     case W_PRINT: return p->hold < 0 && S[r].state == S_IDLE;
@@ -666,7 +667,7 @@ static void player_update(player_t *p, float dt) {
     p->work = 0; p->work_kind = W_NONE;
     if (pressed_a && c.kind != W_NONE) act(p, c.kind, c.ref);
   }
-  if (c.kind == W_CUT && working) S[ST_LASER].state = S_BUSY;
+  if (c.kind == W_CUT && working && S[ST_LASER].state == S_LOADED) G.laser_cutting = 0.1f;
 
   if (c.kind != W_NONE) {
     snprintf(p->prompt, sizeof p->prompt, "%s", c.label);
@@ -715,7 +716,7 @@ static void player_update(player_t *p, float dt) {
     p->idle = 0;
   } else {
     p->bob = 0;
-    if (!p->btn) p->idle += dt;
+    if (p->btn) p->idle = 0; else p->idle += dt;   /* holding a button is playing too */
   }
   collide(&p->x, &p->z, 0.38f);
   for (int k = 0; k < MAX_PLAYERS; k++) {
@@ -966,13 +967,22 @@ void game_start_night(void) {
   if (!G.attract) audio_play(SFX_ALARM);
 }
 
+static void calm_meters(void) {
+  G.fire_warn = 0; G.heat = 0; G.landlord = 0; G.clutter = 0; G.vibe = 70; G.laser_cutting = 0;
+  G.ticker_t = 0;
+}
+
 static void end_night(int why) {
   if (G.attract) {
+    calm_meters();
     game_remove_bots(); clear_world();
     G.attract = false; G.phase = PH_TITLE; G.t = 0;
     return;
   }
   G.end = why; G.phase = PH_RESULTS; G.t = 0;
+  float c = G.clutter, v = G.vibe;
+  calm_meters();
+  G.clutter = c; G.vibe = v;   /* the results screen may want them; the warnings and heat stop now */
   audio_music(1);
   audio_play(why == END_SURVIVED ? SFX_WIN : SFX_LOSE);
   for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active) drop(&P[i]);
@@ -1010,7 +1020,7 @@ void game_update(float dt) {
       audio_play(SFX_TICK);
     }
   }
-  if (S[ST_LASER].state == S_BUSY) S[ST_LASER].state = S_LOADED;   /* re-set by whoever is cutting */
+  if (G.laser_cutting > 0) G.laser_cutting -= dt;
   if (S[ST_SHOW].timer > 0) S[ST_SHOW].timer -= dt;
 
   for (int i = 0; i < MAX_ITEMS; i++) if (I[i].alive && I[i].holder < 0) I[i].age += dt;

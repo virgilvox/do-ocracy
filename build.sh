@@ -38,9 +38,13 @@ done
 fail=0; for p in "${pids[@]+"${pids[@]}"}"; do wait "$p" || fail=1; done
 [ $fail = 0 ] || { echo "three.c compile failed" >&2; exit 1; }
 
-# the r186 programs this game draws (tools/states.txt); regenerate with
-#   node third_party/three.c/tools/gen-project-table.mjs --name hsx --out src/gen --states tools/states.txt --cache build/t3-captures
-[ src/gen/hsx_gl.c -nt tools/states.txt ] || (cd "$ROOT" && node "$THREE/tools/gen-project-table.mjs" --name hsx --out src/gen --states tools/states.txt --cache build/t3-captures)
+# the r186 programs this game draws (tools/states.txt), as a C table.
+# The table is committed, so a normal build never needs three.js. Regenerate
+# only when asked (REGEN_STATES=1) or when it is missing; that needs
+#   (cd third_party/three.c && npm install --ignore-scripts)
+if [ "${REGEN_STATES:-0}" = 1 ] || [ ! -f "$ROOT/src/gen/hsx_gl.c" ]; then
+  (cd "$ROOT" && node "$THREE/tools/gen-project-table.mjs" --name hsx --out src/gen --states tools/states.txt --cache build/t3-captures)
+fi
 
 # generated sources: the HeatSync mark as polylines
 node "$ROOT/tools/gen-logo.mjs" "$ROOT/assets/brand/hsl-mark-paths.json" "$OUT/obj/game/logo_mesh.h"

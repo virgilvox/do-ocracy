@@ -90,6 +90,7 @@ static void load_config(void) {
     free(js);
   }
   if (secs[0]) G.night_len = (float)atof(secs);
+  if (!(G.night_len >= 20 && G.night_len <= 3600)) G.night_len = 180;
   static const char L[] = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   for (int i = 0; i < 4; i++) G.room[i] = L[rnd() % (sizeof L - 1)];
   G.room[4] = 0;
@@ -169,8 +170,8 @@ static bool start_pressed;
 static void seat(int *slot, uint32_t b, uint32_t prev, float x, float y, int pad, const char *name) {
   bool edge_a = (b & IN_A) && !(prev & IN_A), edge_s = (b & IN_START) && !(prev & IN_START);
   if (edge_a || edge_s) any_pressed = true;
-  if (edge_s) start_pressed = true;
   if (*slot >= 0 && !P[*slot].active) *slot = -1;
+  if (*slot >= 0 && edge_s) start_pressed = true;   /* the press that clocks you in does not also start the night */
   if (*slot < 0) {
     if ((edge_a || edge_s) && G.phase != PH_RESULTS) {
       *slot = game_add_player(false, pad, NULL, name);
@@ -181,19 +182,14 @@ static void seat(int *slot, uint32_t b, uint32_t prev, float x, float y, int pad
   game_player_input(*slot, b, x, y);
 }
 
-static bool keys_held(void) {
-  for (int i = 1; i < 32; i++) if (keys[i]) return true;   /* skip byte 0: no keys live there */
-  return false;
-}
-
 static void read_input(float dt) {
   any_pressed = start_pressed = false;
-  bool kb_down = keys_held();
   for (int i = 0; i < 4; i++) {
     wc_pad_t *p = &pads[i];
     float x = 0, y = 0;
     uint32_t b = p->connected ? pad_buttons(p, &x, &y) : 0;
     if (!p->connected && pad_slot[i] >= 0) {
+      game_player_input(pad_slot[i], 0, 0, 0);   /* let go of everything while it is unplugged */
       pad_gone[i] += dt;
       if (pad_gone[i] > 3) { game_remove_player(pad_slot[i]); pad_slot[i] = -1; }
       continue;
@@ -201,7 +197,6 @@ static void read_input(float dt) {
     pad_gone[i] = 0;
     char name[16];
     snprintf(name, sizeof name, "PAD %d", i + 1);
-    if (i == 0 && kb_down && pad_slot[0] < 0) { pad_prev[0] = b; continue; }   /* that is the keyboard, mirrored */
     seat(&pad_slot[i], b, pad_prev[i], x, y, i, name);
     pad_prev[i] = b;
   }
@@ -232,13 +227,25 @@ static void read_input(float dt) {
     if (kb_slot[k] >= 0 && before < 0) P[kb_slot[k]].kb = k;
     kb_prev[k] = b;
   }
+  /* someone who clocked in on a pad or the keyboard and walked away goes home
+   * after a while, so the cabinet can fall back to its demo */
+  if (G.phase == PH_LOBBY || G.phase == PH_NIGHT) {
+    for (int i = 0; i < 4; i++) if (pad_slot[i] >= 0 && P[pad_slot[i]].idle > 75) {
+      char m[48]; snprintf(m, sizeof m, "%s WENT HOME.", P[pad_slot[i]].name); game_toast(m, C_ASH);
+      game_remove_player(pad_slot[i]); pad_slot[i] = -1;
+    }
+    for (int k = 0; k < 2; k++) if (kb_slot[k] >= 0 && P[kb_slot[k]].idle > 75) {
+      char m[48]; snprintf(m, sizeof m, "%s WENT HOME.", P[kb_slot[k]].name); game_toast(m, C_ASH);
+      game_remove_player(kb_slot[k]); kb_slot[k] = -1;
+    }
+  }
   /* phones */
   for (int i = 0; i < MAX_PLAYERS; i++) {
     phone_t *ph = &phones[i];
     if (ph->slot < 0) continue;
     player_t *p = &P[ph->slot];
     if (!p->active || !p->phone) { ph->slot = -1; continue; }
-    p->seen += dt;
+    if (net_online()) p->seen += dt;   /* a relay outage is not the phone's fault */
     if (p->seen > 12) {
       char msg[64];
       snprintf(msg, sizeof msg, "%s LOST SIGNAL.", p->name);
@@ -277,7 +284,7 @@ void game_on_phone(const char *pid, const char *msg) {
     }
     name[n] = 0;
     if (k >= 0) { P[phones[k].slot].seen = 0; welcome(phones[k].slot); return; }
-    if (G.phase == PH_RESULTS) return;
+    if (G.phase == PH_RESULTS) { net_send(pid, "H"); return; }   /* hold on: next round */
     int slot = game_add_player(true, -1, pid, n ? name : NULL);
     if (slot < 0) { net_send(pid, "F"); return; }
     for (int i = 0; i < MAX_PLAYERS; i++) if (phones[i].slot < 0) { phones[i] = (phone_t){ slot, 0, 0, 0 }; break; }

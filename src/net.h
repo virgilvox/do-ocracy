@@ -13,6 +13,8 @@
  *                                      "S<clout>|<karma>|<holding>|<hint>"  status
  *                                      "Z<ms>"  buzz
  *                                      "F"  room full
+ *                                      "R"  the cart does not know you (it restarted): join again
+ *                                      "H"  hold on: the night just ended, you are in the next one
  *   cart -> all    /hsx/ROOM/out/all   "P<phase>|<seconds left>|<clutter>|<vibe>"
  */
 #ifndef HSX_NET_H

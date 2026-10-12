@@ -10,10 +10,13 @@ static bool online;
 static float retry_in;
 static int fails;
 static bool named;   /* the room code is fixed after the first WELCOME */
+static float since_dial;
+static void lost(int32_t id);
 
 static void dial(void) {
   sock = wc_peer_open(url, (unsigned)strlen(url));
   online = false;
+  since_dial = 0;
   char m[160];
   snprintf(m, sizeof m, "net: dial %s -> %d", url, sock);
   wc_log(m, (unsigned)strlen(m));
@@ -29,7 +32,11 @@ void net_init(const char *relay_url, const char *rm) {
 bool net_online(void) { return online; }
 
 void net_update(float dt) {
-  if (sock >= 0) return;
+  if (sock >= 0) {
+    /* a socket that opened but never got a WELCOME is as good as down */
+    if (!online && (since_dial += dt) > 10) { int32_t s = sock; wc_peer_close(s); lost(s); }
+    return;
+  }
   retry_in -= dt;
   if (retry_in <= 0) dial();
 }

@@ -1,4 +1,4 @@
-// Headless test harness: runs the cart in wasmcart's Node host on webgl-node
+// Headless test rig: runs the cart in wasmcart's Node host on webgl-node
 // (the same native GL path the game station uses), with scripted input, and
 // writes PNG screenshots of chosen frames.
 //

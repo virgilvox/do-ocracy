@@ -15,7 +15,7 @@ static t3_light *laser_glow, *kitchen_lamp, *bench_lamp;
 static t3_geometry *g_box, *g_cyl, *g_sphere, *g_knot, *g_disc, *g_cone;
 static t3_material *m_plywood, *m_amber, *m_scrap, *m_bottle, *m_label, *m_spaghetti, *m_crt, *m_screen,
                    *m_cardboard, *m_sawdust, *m_puddle, *m_strip, *m_glow, *m_skin, *m_visor, *m_pcb, *m_led,
-                   *m_char, *m_steel, *m_steel_hi, *m_bone, *m_slab, *m_rust, *m_live, *m_violet, *m_info,
+                   *m_char, *m_steel, *m_steel_hi, *m_bone, *m_rust, *m_violet, *m_info,
                    *m_plate, *m_wood, *m_dumpster, *m_fridge, *m_mate;
 
 static t3_material *mat(uint32_t c, float rough, float metal) {
@@ -663,9 +663,7 @@ void world_init(t3_scene *scene) {
   m_steel = mat(C_STEEL, 0.9f, 0);
   m_steel_hi = mat(C_STEEL_HI, 0.6f, 0.4f);
   m_bone = mat(C_BONE, 0.7f, 0);
-  m_slab = mat(C_SLAB_HI, 0.8f, 0.1f);
   m_rust = mat(C_RUST, 0.8f, 0);
-  m_live = mat(C_LIVE, 0.8f, 0);
   m_violet = mat(0x6a4fa0, 0.9f, 0);
   m_info = mat(C_INFO, 0.5f, 0.2f);
   m_plate = mat(0xf4f1ea, 0.3f, 0);
@@ -845,9 +843,10 @@ void world_sync(float dt) {
   }
   /* laser */
   station_t *L = &S[ST_LASER];
-  laser_glow->intensity = L->state == S_BUSY ? 10.0f + 6.0f * sinf(t * 40) : 0.0f;
-  L->beam->base.visible = L->state == S_BUSY;
-  if (L->state == S_BUSY) t3_object_set_position(L->beam, sinf(t * 7) * 0.9f, 1.2f, cosf(t * 5) * 0.5f);
+  bool cutting = G.laser_cutting > 0;
+  laser_glow->intensity = cutting ? 10.0f + 6.0f * sinf(t * 40) : 0.0f;
+  L->beam->base.visible = cutting;
+  if (cutting) t3_object_set_position(L->beam, sinf(t * 7) * 0.9f, 1.2f, cosf(t * 5) * 0.5f);
   glow(L->light, L->state == S_BROKEN ? C_FAULT : L->state == S_DONE ? C_HAZARD : C_LIVE, L->state == S_BROKEN ? 2.5f * (0.6f + 0.4f * sinf(t * 10)) : 1.5f);
   /* printers */
   for (int k = 0; k < 2; k++) {
