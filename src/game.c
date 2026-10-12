@@ -26,20 +26,36 @@ uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return
 float frnd(void) { return (rnd() & 0xffffff) / 16777216.f; }
 #define PICK(arr) (arr[rnd() % COUNT(arr)])
 
+/* the floor plan: zones the way a real shop is laid out. Wood shop and laser
+ * at the back left, printing and electronics at the back right, the metal
+ * shop on the right wall by the alley door, the kitchen and the lounge at the
+ * front left, Show & Tell in the front window, the Free Pile by the door out */
 static const struct { const char *label; float x, z, hw, hd; } LAYOUT[ST_COUNT] = {
-  [ST_LUMBER]   = { "LUMBER", -10.9f, -1.6f, 0.65f, 1.35f },
-  [ST_LASER]    = { "PEWPEW 9000", -5.0f, -5.7f, 1.35f, 0.8f },
-  [ST_PRINT1]   = { "LOAFER", 0.3f, -6.1f, 0.6f, 0.5f },
-  [ST_PRINT2]   = { "DR. STRANGE", 3.2f, -6.1f, 0.6f, 0.5f },
-  [ST_CUTSALOT] = { "SIR CUTSALOT", 6.5f, -6.3f, 0.8f, 0.4f },
-  [ST_BENCH]    = { "ELECTRONICS", 9.6f, -5.9f, 1.9f, 0.7f },
-  [ST_SINK]     = { "SINK", -11.0f, 2.6f, 0.6f, 0.8f },
-  [ST_FRIDGE]   = { "FRIDGE", -11.0f, 4.9f, 0.55f, 0.5f },
-  [ST_TRASH]    = { "TRASH", 11.1f, 1.4f, 0.65f, 0.55f },
-  [ST_FREEPILE] = { "FREE PILE", 10.7f, 5.2f, 0.9f, 0.9f },
-  [ST_SHOW]     = { "SHOW & TELL", 0.0f, 5.9f, 2.0f, 0.55f },
-  [ST_COUCH]    = { "LURKER COUCH", -4.0f, 1.8f, 1.6f, 0.5f },
-  [ST_TABLE]    = { "WORKTABLE", 4.0f, 1.4f, 1.5f, 0.8f },
+  [ST_LUMBER]   = { "LUMBER", -11.0f, -4.6f, 0.55f, 1.5f },
+  [ST_LASER]    = { "PEWPEW 9000", -4.6f, -5.95f, 1.4f, 0.8f },
+  [ST_PRINT1]   = { "LOAFER", -0.6f, -6.35f, 0.55f, 0.45f },
+  [ST_PRINT2]   = { "DR. STRANGE", 1.0f, -6.35f, 0.55f, 0.45f },
+  [ST_CUTSALOT] = { "SIR CUTSALOT", 3.0f, -6.4f, 0.75f, 0.38f },
+  [ST_BENCH]    = { "ELECTRONICS", 7.2f, -6.0f, 1.9f, 0.7f },
+  [ST_SINK]     = { "SINK", -11.0f, 1.9f, 0.6f, 0.9f },
+  [ST_FRIDGE]   = { "FRIDGE", -11.0f, 4.4f, 0.55f, 0.5f },
+  [ST_TRASH]    = { "TRASH", 11.1f, 1.6f, 0.65f, 0.55f },
+  [ST_FREEPILE] = { "FREE PILE", 10.4f, 5.5f, 1.2f, 0.8f },
+  [ST_SHOW]     = { "SHOW & TELL", 1.8f, 6.3f, 2.2f, 0.5f },
+  [ST_COUCH]    = { "LURKER COUCH", -4.6f, 3.6f, 1.6f, 0.45f },
+  [ST_TABLE]    = { "WORK ISLAND", 3.4f, 0.6f, 1.6f, 0.8f },
+};
+
+const obst_t OBST[OB_COUNT] = {
+  [OB_SAW]    = { -8.0f, -5.7f, 0.7f, 0.55f },    /* table saw, wood shop */
+  [OB_SHELF]  = { -11.55f, -2.0f, 0.35f, 0.9f },  /* parts shelving, left wall */
+  [OB_COFFEE] = { -11.15f, -0.2f, 0.5f, 0.6f },   /* coffee and coworking */
+  [OB_KTABLE] = { -8.3f, 2.4f, 0.75f, 0.65f },    /* kitchen table */
+  [OB_TV]     = { -4.6f, 6.25f, 0.9f, 0.2f },     /* the lounge TV, clear of the couch */
+  [OB_CTABLE] = { -2.75f, 3.55f, 0.25f, 0.25f },  /* side table at the end of the couch */
+  [OB_ISLAND] = { -2.0f, -1.8f, 1.3f, 0.6f },     /* assembly table */
+  [OB_LATHE]  = { 11.15f, -5.2f, 0.55f, 1.1f },   /* metal shop */
+  [OB_MILL]   = { 11.1f, -2.9f, 0.55f, 0.55f },
 };
 
 #define DOOR_X -8.0f
@@ -173,14 +189,27 @@ static float box_dist(float x, float z, const station_t *s) {
   return sqrtf(dx * dx + dz * dz);
 }
 
+/* nowhere near a station or a piece of furniture */
+static bool clear_spot(float x, float z, float margin) {
+  for (int i = 0; i < ST_COUNT; i++) if (box_dist(x, z, &S[i]) < margin) return false;
+  for (int i = 0; i < OB_COUNT; i++) {
+    float dx = fabsf(x - OBST[i].x) - OBST[i].hw, dz = fabsf(z - OBST[i].z) - OBST[i].hd;
+    if (dx < margin && dz < margin) return false;
+  }
+  return true;
+}
+
 static void collide(float *x, float *z, float r) {
   if (*x < -11.6f) *x = -11.6f;
   if (*x > 11.6f) *x = 11.6f;
   if (*z < -6.6f) *z = -6.6f;
   if (*z > 7.0f && fabsf(*x - DOOR_X) > 0.9f) *z = 7.0f;
   if (*z > 8.5f) *z = 8.5f;
-  for (int i = 0; i < ST_COUNT; i++) {
-    station_t *s = &S[i];
+  for (int i = 0; i < ST_COUNT + OB_COUNT; i++) {
+    station_t ob;
+    const station_t *s = &ob;
+    if (i < ST_COUNT) s = &S[i];
+    else { ob.x = OBST[i - ST_COUNT].x; ob.z = OBST[i - ST_COUNT].z; ob.hw = OBST[i - ST_COUNT].hw; ob.hd = OBST[i - ST_COUNT].hd; }
     float cx = fmaxf(s->x - s->hw, fminf(*x, s->x + s->hw));
     float cz = fmaxf(s->z - s->hd, fminf(*z, s->z + s->hd));
     float dx = *x - cx, dz = *z - cz, d2 = dx * dx + dz * dz;
@@ -570,6 +599,14 @@ static void bot_think(player_t *p, float dt) {
     p->think = 3 + frnd() * 2;
   }
   if (p->bot == BOT_TALKER && (p->talk_in -= dt) <= 0) { b |= IN_X; p->talk_in = 6 + frnd() * 8; }
+  if (p->escape > 0) {
+    p->escape -= dt;
+    float dx = p->esc_x - p->x, dz = p->esc_z - p->z, d = sqrtf(dx * dx + dz * dz);
+    if (d > 0.2f) { sx = dx / d; sy = dz / d; } else p->escape = 0;
+    p->lastx = p->x; p->lastz = p->z;
+    p->btn = b; p->sx = sx; p->sy = sy;
+    return;
+  }
   if (p->goal != W_NONE) {
     cand_t c = find_target(p);
     if (c.kind == p->goal && (c.ref == p->goal_ref || p->goal == W_DEPOSIT || p->goal == W_LOAD)) {
@@ -582,8 +619,14 @@ static void bot_think(player_t *p, float dt) {
       if (d > 0.05f) { sx = dx / d; sy = dz / d; }
       if (d < 0.6f) { sx *= 0.5f; sy *= 0.5f; }
       float moved = fabsf(p->x - p->lastx) + fabsf(p->z - p->lastz);
-      if (moved < 0.02f) p->stuck += dt; else p->stuck = fmaxf(0, p->stuck - dt);
-      if (p->stuck > 0.5f) { p->side = frnd() < 0.5f ? -1 : 1; p->stuck = -0.6f; }
+      if (moved < 0.02f) p->stuck += dt; else { p->stuck = fmaxf(0, p->stuck - dt); p->stuck_total = fmaxf(0, p->stuck_total - dt * 0.5f); }
+      if (p->stuck > 0.5f) { p->side = frnd() < 0.5f ? -1 : 1; p->stuck = -0.6f; p->stuck_total += 0.5f; }
+      if (p->stuck_total > 3) {
+        /* wedged: walk somewhere open, then think again */
+        p->stuck_total = 0; p->goal = W_NONE; p->think = 1.5f;
+        for (int t = 0; t < 20; t++) { p->esc_x = p->x + (frnd() - 0.5f) * 6; p->esc_z = p->z + (frnd() - 0.5f) * 6; if (clear_spot(p->esc_x, p->esc_z, 0.8f)) break; }
+        p->escape = 1.5f;
+      }
       if (p->stuck < 0) { float ox = sx; sx = sx * 0.3f - sy * p->side; sy = sy * 0.3f + ox * p->side; }
     }
   }
@@ -702,7 +745,10 @@ static void spawn_newbie(void) {
     npc_t *n = &N[i];
     memset(n, 0, sizeof *n);
     n->alive = true; n->state = 0; n->x = DOOR_X; n->z = DOOR_Z; n->hold = -1; n->target = -1;
-    n->tx = -6 + frnd() * 10; n->tz = 3.4f + frnd() * 2.2f;
+    for (int t = 0; t < 30; t++) {
+      n->tx = -7 + frnd() * 12; n->tz = -0.5f + frnd() * 5.5f;
+      if (clear_spot(n->tx, n->tz, 0.8f)) break;
+    }
     n->patience = 20;
     n->obj = world_person(0x8b8578, true, &n->body);
     game_toast("A NEWBIE WALKED IN. SOMEBODY SAY HI.", C_BONE);
@@ -724,7 +770,8 @@ static void npc_update(npc_t *n, float dt) {
   int idx = (int)(n - N);
   switch (n->state) {
     case 0:
-      if (walk(n, dt, 2.4f)) n->state = 1;
+      n->work += dt;   /* walking in; if something is in the way, stop and wait where you are */
+      if (walk(n, dt, 2.4f) || n->work > 6) { n->state = 1; n->work = 0; }
       break;
     case 1:
       if (G.phase == PH_NIGHT) n->patience -= dt;
@@ -778,7 +825,10 @@ static void npc_update(npc_t *n, float dt) {
           }
         }
       } else {
-        if (walk(n, dt, 1.6f)) { n->tx = -8 + frnd() * 16; n->tz = -2 + frnd() * 7; }
+        if (walk(n, dt, 1.6f) || (n->work += dt) > 5) {
+          n->work = 0;
+          for (int t = 0; t < 20; t++) { n->tx = -8 + frnd() * 16; n->tz = -3 + frnd() * 8; if (clear_spot(n->tx, n->tz, 0.7f)) break; }
+        }
       }
       break;
     }
@@ -809,7 +859,7 @@ static const struct { const char *text, *sub; int effect; int weight; } EVENTS[]
 
 static void spawn_donation(void) {
   int d = (int)(rnd() % COUNT(DONATIONS));
-  spawn_item(IT_DONATION, DOOR_X + 1.2f + frnd() * 1.5f, 5.6f + frnd() * 0.8f, 0, d);
+  spawn_item(IT_DONATION, DOOR_X - 0.7f + frnd() * 1.4f, 5.7f + frnd() * 0.6f, 0, d);   /* left on the door mat */
   char msg[96];
   snprintf(msg, sizeof msg, "DONATED: %s", DONATIONS[d].name);
   game_toast(msg, C_ASH);
@@ -819,7 +869,7 @@ static void floor_spot(float *x, float *z) {
   for (int tries = 0; tries < 20; tries++) {
     *x = -10 + frnd() * 20; *z = -4.5f + frnd() * 10;
     bool ok = true;
-    for (int i = 0; i < ST_COUNT; i++) if (box_dist(*x, *z, &S[i]) < 0.6f) ok = false;
+    if (!clear_spot(*x, *z, 0.6f)) ok = false;
     if (ok) return;
   }
 }
@@ -904,7 +954,7 @@ void game_start_night(void) {
     if (!p->active) continue;
     p->clout = p->karma = p->proposals = p->greeted = p->mates = p->tasks = 0;
     p->idle = 0; p->boost = 0; p->owes_bottle = false; p->hold = -1;
-    p->x = -6 + (i % 4) * 1.4f; p->z = 4.6f + (i / 4) * 1.0f;
+    p->x = -1.5f + (i % 4) * 1.2f; p->z = 4.3f + (i / 4) * 0.9f;
   }
   /* the space is never clean when you arrive */
   float x, z;

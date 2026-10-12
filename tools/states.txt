@@ -5,3 +5,8 @@ standard+instbig+shadow+l1001
 basic+map
 standard+shadow+l1301+s100
 standard+instbig+shadow+l1301+s100
+standard+shadow+l1401+s100
+standard+instbig+l1401
+standard+instbig+shadow+l1401+s100
+standard+map+shadow+l1401+s100
+standard+l1401

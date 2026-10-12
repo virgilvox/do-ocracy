@@ -28,6 +28,12 @@ The night throws events at you: IT IS 118 OUTSIDE, HABOOB, SOMEBODY BROUGHT TACO
 
 When nobody is playing, the cabinet runs an attract mode. Three archetypes play a night on their own: BUILDER (mostly karma), TALKER (proposals and the laser) and FOUNDER (all glamour). If you play alone, BUILDER and TALKER clock in with you, so there is a commons to ruin.
 
+## The space
+
+The floor plan is a working makerspace, zone by zone: the wood shop and lumber rack at the back left (OSB floor, sawdust, a table saw), PEWPEW 9000 on its hazard-taped mat, the printing counter with Loafer, Dr. Strange and Sir Cutsalot, the electronics bench on its ESD mat, the metal shop on the right wall (a lathe, a mill that is not a Bridgeport) by the alley door and the dumpster, a checkerboard kitchen with the coffee station and a table, the lounge with the lurker couch, the work island and the assembly table in the middle, Show & Tell in the front window, and the Free Pile by the door. Brick walls, strip lights, string lights, a bike on the wall, the whiteboard that says GOTO 1.
+
+The floor and walls are textures painted at startup with the HUD's own drawing routines, so there are no image files in the cart.
+
 ## Controls
 
 | | Move | Do it (hold for work) | Drop | Propose | Begin |

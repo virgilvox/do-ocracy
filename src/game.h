@@ -73,6 +73,7 @@ typedef struct {
   int bot;             /* 0 human, else an archetype (BOT_*) */
   int goal, goal_ref;
   float think, stuck, side, lastx, lastz, talk_in;
+  float stuck_total, escape, esc_x, esc_z;
   int pad;             /* local pad index, or -1 */
   int kb;              /* keyboard seat (0, 1), or -1 */
   bool has_goal;       /* carrying something: where it goes */
@@ -145,6 +146,11 @@ extern player_t P[MAX_PLAYERS];
 extern item_t I[MAX_ITEMS];
 extern npc_t N[MAX_NPCS];
 extern station_t S[ST_COUNT];
+
+/* furniture that blocks movement but does nothing: the room's layout */
+enum { OB_SAW, OB_SHELF, OB_COFFEE, OB_KTABLE, OB_TV, OB_CTABLE, OB_ISLAND, OB_LATHE, OB_MILL, OB_COUNT };
+typedef struct { float x, z, hw, hd; } obst_t;
+extern const obst_t OBST[OB_COUNT];
 
 uint32_t rnd(void);
 float frnd(void);
