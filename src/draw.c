@@ -39,6 +39,35 @@ static void label(int x, int y, const char *s, uint32_t fg, uint32_t bg, int fon
   hud_text(font, x, y, s, fg, 255, AL_CENTER);
 }
 
+/* world labels never stack: each one takes the nearest free spot above or
+ * below where it wants to be, and the HUD strips are taken before any of them */
+typedef struct { int x, y, w, h; } rect_t;
+static rect_t placed[192];
+static int nplaced;
+static void reserve(int x, int y, int w, int h) { if (nplaced < 192) placed[nplaced++] = (rect_t){ x, y, w, h }; }
+static bool hits(int x, int y, int w, int h) {
+  for (int i = 0; i < nplaced; i++) {
+    rect_t *r = &placed[i];
+    if (x < r->x + r->w && x + w > r->x && y < r->y + r->h && y + h > r->y) return true;
+  }
+  return false;
+}
+static int settle(int x, int y, int w, int h) {
+  static const int steps[] = { 0, 1, -1, 2, -2, 3, -3 };
+  for (unsigned i = 0; i < sizeof steps / sizeof steps[0]; i++) {
+    int ty = y + steps[i] * (h / 2 + 3);
+    if (!hits(x, ty, w, h)) { reserve(x, ty, w, h); return ty; }
+  }
+  reserve(x, y, w, h);
+  return y;
+}
+static void label_av(int x, int y, const char *s, uint32_t fg, uint32_t bg, int font) {
+  int w = hud_text_w(font, s), h = hud_font_h(font);
+  y = settle(x - w / 2 - 6, y - 3, w + 12, h + 8) + 3;
+  hud_rect(x - w / 2 - 6, y - 3, w + 12, h + 8, bg, 235);
+  hud_text(font, x, y, s, fg, 255, AL_CENTER);
+}
+
 /* a GANTRY eyebrow: tracked mono caps */
 static void eyebrow(int x, int y, const char *s, uint32_t c, int align) {
   char buf[160];
@@ -196,6 +225,9 @@ static void station_labels(void) {
     if (!(alarm || ready || near)) st[0] = 0;
     uint32_t edge = pay == 1 ? C_HAZARD : pay == 2 ? C_LIVE : C_STEEL_HI;
     int w = hud_text_w(F_MONO_S, s->label);
+    int sw = st[0] ? hud_text_w(F_MONO_S, st) + 12 : 0;
+    int bw = (w + 16 > sw ? w + 16 : sw);
+    sy = settle(sx - bw / 2, sy - 4, bw, st[0] ? 48 : 24) + 4;
     hud_rect(sx - w / 2 - 8, sy - 4, w + 16, 24, C_CHAR, 240);
     hud_rect(sx - w / 2 - 8, sy - 4, 4, 24, edge, 255);
     hud_text(F_MONO_S, sx + 2, sy, s->label, C_BONE, 255, AL_CENTER);
@@ -220,14 +252,14 @@ static void floor_tags(void) {
       /* a mess: a ring that says clean me */
       float pulse = 0.5f + 0.5f * sinf(T * 4 + i);
       hud_ring(sx, sy + 8, 15 + (int)(pulse * 3), 3, 1, it->type == IT_DAISY ? C_FAULT : C_LIVE, 200);
-      label(sx, sy - 26, it->type == IT_DAISY ? "UNPLUG ME" : it->type == IT_PUDDLE ? "MOP ME" : "SWEEP ME", it->type == IT_DAISY ? C_INK_ERR : C_INK_OK, C_CHAR, F_MONO_S);
+      label_av(sx, sy - 26, it->type == IT_DAISY ? "UNPLUG ME" : it->type == IT_PUDDLE ? "MOP ME" : "SWEEP ME", it->type == IT_DAISY ? C_INK_ERR : C_INK_OK, C_CHAR, F_MONO_S);
     } else if (it->type == IT_PROJECT) {
-      label(sx, sy - 20, item_name(it), C_HAZARD, C_CHAR, F_MONO_S);
+      label_av(sx, sy - 20, item_name(it), C_HAZARD, C_CHAR, F_MONO_S);
     } else if (it->type == IT_DONATION) {
-      label(sx, sy - 20, item_name(it), C_BONE, C_CHAR, F_MONO_S);
-      label(sx, sy + 2, "TO FREE PILE", C_INK_OK, C_TAPE, F_MONO_S);
+      label_av(sx, sy - 20, item_name(it), C_BONE, C_CHAR, F_MONO_S);
+      label_av(sx, sy + 2, "TO FREE PILE", C_INK_OK, C_TAPE, F_MONO_S);
     } else if (it->type != IT_PLYWOOD) {
-      label(sx, sy - 18, "TRASH ME", C_INK_OK, C_CHAR, F_MONO_S);
+      label_av(sx, sy - 18, "TRASH ME", C_INK_OK, C_CHAR, F_MONO_S);
     }
     if (red) {
       hud_rect(sx - 30, sy + 14, 60, 16, C_FAULT, 255);
@@ -247,7 +279,7 @@ static void npcs_overlay(void) {
       hud_circle(sx, sy, 20, C_CHAR, 235);
       hud_ring(sx, sy, 20, 5, f, f < 0.35f ? C_FAULT : C_LIVE, 255);
       hud_text(F_H3, sx, sy - 16, "?", C_BONE, 255, AL_CENTER);
-      label(sx, sy + 26, f < 0.35f ? "LEAVING! SAY HI" : "NEWBIE: SAY HI", f < 0.35f ? C_INK_ERR : C_INK_OK, C_CHAR, F_MONO_S);
+      label_av(sx, sy + 26, f < 0.35f ? "LEAVING! SAY HI" : "NEWBIE: SAY HI", f < 0.35f ? C_INK_ERR : C_INK_OK, C_CHAR, F_MONO_S);
     } else if (n->state == 2) {
       hud_text(F_MONO_S, sx, sy + 10, "MEMBER", C_INK_OK, 255, AL_CENTER);
     }
@@ -374,15 +406,15 @@ static void join_panel(int x, int y, bool big) {
 }
 
 static void join_strip(int x, int y) {
-  hud_panel(x, y, 314, 76, C_SLAB, C_STEEL_HI);
+  hud_panel(x, y, 320, 56, C_SLAB, C_STEEL_HI);
   if (net_online()) {
-    hud_qr(x + 6, y + 6, 64, G.join_url);
-    eyebrow(x + 82, y + 10, "PHONES JOIN", C_ASH, AL_LEFT);
-    hud_text(F_H2, x + 80, y + 26, G.room, C_HAZARD, 255, AL_LEFT);
-    hud_text(F_MONO_S, x + 300, y + 48, "ANY TIME", C_SMOKE, 255, AL_RIGHT);
+    hud_qr(x + 5, y + 4, 48, G.join_url);
+    eyebrow(x + 62, y + 8, "PHONES JOIN", C_ASH, AL_LEFT);
+    hud_text(F_H3, x + 60, y + 24, G.room, C_HAZARD, 255, AL_LEFT);
+    hud_text(F_MONO_S, x + 308, y + 32, "ANY TIME", C_SMOKE, 255, AL_RIGHT);
   } else {
-    eyebrow(x + 14, y + 12, "PHONES OFFLINE", C_ASH, AL_LEFT);
-    hud_text(F_MONO_S, x + 14, y + 40, "GRAB A CONTROLLER.", C_BONE, 255, AL_LEFT);
+    eyebrow(x + 14, y + 10, "PHONES OFFLINE", C_ASH, AL_LEFT);
+    hud_text(F_MONO_S, x + 14, y + 32, "GRAB A CONTROLLER.", C_BONE, 255, AL_LEFT);
   }
 }
 
@@ -401,8 +433,8 @@ static void toasts(int x, int y) {
 
 /* one message slot, just under the top bar, over the back wall: nothing you
  * play with is up there, so a message never covers the floor */
-#define SLOT_Y 94
-#define SLOT_H 40
+#define SLOT_Y 68
+#define SLOT_H 32
 static void slot_bar(const char *chip, uint32_t chip_c, const char *msg, uint32_t msg_c, int a, int dy) {
   /* step the fonts down until it fits on one line */
   int cf = F_H3, mf = F_MONO, max = HUD_W - 32;
@@ -416,8 +448,8 @@ static void slot_bar(const char *chip, uint32_t chip_c, const char *msg, uint32_
   hud_rect(x + 5, y + 5, w, SLOT_H, C_SHADOW, a);
   hud_rect(x, y, w, SLOT_H, C_CHAR, a);
   hud_rect(x, y, cw, SLOT_H, chip_c, a);
-  hud_text(cf, x + cw / 2, y + (cf == F_H3 ? 6 : 4), chip, C_TAPE, a, AL_CENTER);
-  if (mw) hud_text(mf, x + cw + 14, y + (mf == F_MONO ? 9 : 12), msg, msg_c, a, AL_LEFT);
+  hud_text(cf, x + cw / 2, y + (cf == F_H3 ? 2 : 1), chip, C_TAPE, a, AL_CENTER);
+  if (mw) hud_text(mf, x + cw + 14, y + (mf == F_MONO ? 5 : 8), msg, msg_c, a, AL_LEFT);
   hud_frame(x, y, w, SLOT_H, 2, chip_c, a);
 }
 
@@ -433,16 +465,17 @@ static void meter(int x, int y, int w, const char *name, const char *rule, float
   eyebrow(x, y, name, C_BONE, AL_LEFT);
   hud_text(F_MONO_S, x + hud_text_w(F_MONO_S, name) * 2 + 10, y, rule, C_SMOKE, 255, AL_LEFT);
   hud_text(F_MONO_S, x + w, y, right, C_ASH, 255, AL_RIGHT);
-  hud_bar(x, y + 22, w, 18, v / 100.f, fill, C_CHAR);
+  hud_bar(x, y + 20, w, 16, v / 100.f, fill, C_CHAR);
 }
 
+/* two compact rows: clock, meters and join on top; messages in a strip below.
+ * Both sit above the room, never over it */
 static void top_bar(void) {
   char clk[16];
   clock_str(clk, sizeof clk);
-  hud_panel(16, 14, 294, 76, C_SLAB, C_STEEL_HI);
-  hud_logo(24, 20, 64, C_BONE);
-  if (G.phase != PH_NIGHT) eyebrow(98, 24, "CLOCKING IN", C_ASH, AL_LEFT);
-  hud_text(F_H2, 96, 36, G.phase == PH_NIGHT ? clk : "7:00 PM", C_BONE, 255, AL_LEFT);
+  hud_panel(16, 6, 300, 56, C_SLAB, C_STEEL_HI);
+  hud_logo(20, 9, 50, C_BONE);
+  hud_text(F_H2, 74, 14, G.phase == PH_NIGHT ? clk : "7:00 PM", C_BONE, 255, AL_LEFT);
   if (G.phase == PH_NIGHT) {
     /* how much night is left: a countdown and a bar with the hours on it */
     int left = (int)ceilf(G.night_len - G.t);
@@ -450,26 +483,23 @@ static void top_bar(void) {
     bool closing = left <= 30;
     char lt[24];
     snprintf(lt, sizeof lt, "%d:%02d LEFT", left / 60, left % 60);
-    eyebrow(98, 24, lt, closing && fmodf(T, 0.8f) < 0.5f ? C_HAZARD : C_ASH, AL_LEFT);
-    /* the night, 7 to 11, as a bar along the bottom of the clock panel */
+    hud_text(F_MONO_S, 306, 10, lt, closing && fmodf(T, 0.8f) < 0.5f ? C_HAZARD : C_ASH, 255, AL_RIGHT);
     float f = G.t / G.night_len;
-    int bx = 96, bw = 206, by = 78;
-    hud_rect(bx, by, bw, 8, C_CHAR, 255);
-    hud_rect(bx, by, (int)(bw * fminf(1, f)), 8, closing ? C_RUST : C_HAZARD, 255);
-    for (int h = 1; h < 4; h++) hud_rect(bx + bw * h / 4, by, 2, 8, C_STEEL_HI, 255);
-  } else hud_text(F_MONO_S, 290, 66, "AZ", C_SMOKE, 255, AL_RIGHT);
+    int bx = 76, bw = 232, by = 54;
+    hud_rect(bx, by, bw, 5, C_CHAR, 255);
+    hud_rect(bx, by, (int)(bw * fminf(1, f)), 5, closing ? C_RUST : C_HAZARD, 255);
+    for (int h = 1; h < 4; h++) hud_rect(bx + bw * h / 4, by, 2, 5, C_STEEL_HI, 255);
+  } else hud_text(F_MONO_S, 306, 10, "CLOCKING IN", C_ASH, 255, AL_RIGHT);
 
-  hud_panel(330, 14, 600, 76, C_SLAB, C_STEEL_HI);
+  hud_panel(330, 6, 600, 56, C_SLAB, C_STEEL_HI);
   float c = G.clutter > 100 ? 100 : G.clutter;
   uint32_t cf = c > 80 ? C_FAULT : c > 55 ? C_RUST : C_HAZARD;
   char r[48];
   if (G.fire_warn > 0) snprintf(r, sizeof r, "FIRE MARSHAL IN %d", (int)ceilf(5 - G.fire_warn));
   else snprintf(r, sizeof r, "%d", (int)c);
-  meter(346, 22, 270, "CLUTTER", "100 = FIRE MARSHAL", c, cf, r);
+  meter(346, 12, 270, "CLUTTER", "100 = FIRE MARSHAL", c, cf, r);
   snprintf(r, sizeof r, "%d", (int)G.vibe);
-  meter(640, 22, 274, "VIBE", "0 = BURNOUT", G.vibe, G.vibe < 25 ? C_FAULT : C_LIVE, r);
-  /* danger: say it in the middle of the screen, once it matters */
-  /* danger is drawn later, in the message slot (see danger()) */
+  meter(640, 12, 274, "VIBE", "0 = BURNOUT", G.vibe, G.vibe < 25 ? C_FAULT : C_LIVE, r);
   if (G.fire_warn > 0 && fmodf(T, 0.5f) < 0.25f) hud_frame(0, 0, HUD_W, HUD_H, 12, C_FAULT, 220);
   if (G.heat > 0) hud_rect(0, 0, HUD_W, HUD_H, 0xff7a1a, 28);
 }
@@ -729,14 +759,17 @@ void draw_hud(float dt) {
     return;
   }
   if (G.phase == PH_RESULTS) { fx_draw(dt); results_screen(); return; }
+  nplaced = 0;
+  reserve(0, 0, HUD_W, 104);                 /* the top rows */
+  reserve(0, HUD_H - 86, HUD_W, 86);         /* the player cards */
   goal_guides();
-  floor_tags();
   station_labels();
+  floor_tags();
   npcs_overlay();
   fx_draw(dt);
   top_bar();
   if (G.phase == PH_LOBBY) lobby_overlay();
-  else join_strip(950, 14);
+  else join_strip(944, 6);
   if (!danger()) { ticker_band(); if (G.ticker_t <= 0) coach(); }
   player_cards();
   toasts(16, HUD_H - 100);

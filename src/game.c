@@ -685,12 +685,12 @@ static void player_update(player_t *p, float dt) {
   if (p->hold >= 0) {
     int t = I[p->hold].type, st = -1;
     const char *lab = NULL;
-    if (t == IT_PROJECT) { st = ST_SHOW; lab = "SHOW IT OFF AT SHOW & TELL"; }
-    else if (t == IT_DONATION) { st = ST_FREEPILE; lab = "TAKE IT TO THE FREE PILE"; }
-    else if (is_junk(t)) { st = ST_TRASH; lab = "THROW IT IN THE TRASH"; }
+    if (t == IT_PROJECT) { st = ST_SHOW; lab = "TO SHOW & TELL"; }
+    else if (t == IT_DONATION) { st = ST_FREEPILE; lab = "TO THE FREE PILE"; }
+    else if (is_junk(t)) { st = ST_TRASH; lab = "TO THE TRASH"; }
     else if (t == IT_PLYWOOD) {
-      if (S[ST_LASER].state == S_IDLE) { st = ST_LASER; lab = "LOAD IT INTO PEWPEW 9000"; }
-      else { st = ST_FREEPILE; lab = "LASER IS BUSY. FREE PILE IT"; }
+      if (S[ST_LASER].state == S_IDLE) { st = ST_LASER; lab = "TO PEWPEW 9000"; }
+      else { st = ST_FREEPILE; lab = "LASER BUSY: FREE PILE"; }
     }
     if (st >= 0) { p->has_goal = true; p->goal_st = st; p->goal_x = S[st].x; p->goal_z = S[st].z; p->goal_label = lab; }
   }

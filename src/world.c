@@ -706,7 +706,7 @@ void world_init(t3_scene *scene) {
   t3_object_set_position(stage_lamp, 1.8f, 2.8f, 5.2f);
   t3_object_add(&SC->base, stage_lamp);
 
-  world_cam = t3_perspective_camera_new(38, 1280.f / 720.f, 0.5f, 80);
+  world_cam = t3_perspective_camera_new(39, 1280.f / 720.f, 0.5f, 80);
   t3_object_set_position(world_cam, 0, 19.5f, 13.0f);
   t3_object_look_at(world_cam, 0, 0, 0.9f);
 }

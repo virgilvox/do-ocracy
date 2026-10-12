@@ -370,7 +370,7 @@ static void flow(float dt) {
 static void camera(float dt) {
   static float t;
   t += dt;
-  float x = 0, y = 21.5f, z = 15.0f, lx = 0, lz = -0.75f;
+  float x = 0, y = 21.5f, z = 15.0f, lx = 0, lz = -1.25f;
   if (G.phase == PH_TITLE || G.attract) { x = sinf(t * 0.12f) * 5; y = 16.5f; z = 12.5f + cosf(t * 0.12f) * 1.5f; lx = 2.5f; lz = -0.5f; }
   if (G.shake > 0) { x += sinf(t * 60) * G.shake * 0.3f; }
   t3_object_set_position(world_cam, x, y, z);
