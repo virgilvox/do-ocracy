@@ -181,8 +181,14 @@ static void seat(int *slot, uint32_t b, uint32_t prev, float x, float y, int pad
   game_player_input(*slot, b, x, y);
 }
 
+static bool keys_held(void) {
+  for (int i = 1; i < 32; i++) if (keys[i]) return true;   /* skip byte 0: no keys live there */
+  return false;
+}
+
 static void read_input(float dt) {
   any_pressed = start_pressed = false;
+  bool kb_down = keys_held();
   for (int i = 0; i < 4; i++) {
     wc_pad_t *p = &pads[i];
     float x = 0, y = 0;
@@ -195,27 +201,35 @@ static void read_input(float dt) {
     pad_gone[i] = 0;
     char name[16];
     snprintf(name, sizeof name, "PAD %d", i + 1);
+    if (i == 0 && kb_down && pad_slot[0] < 0) { pad_prev[0] = b; continue; }   /* that is the keyboard, mirrored */
     seat(&pad_slot[i], b, pad_prev[i], x, y, i, name);
     pad_prev[i] = b;
   }
-  /* two keyboard seats on keys the hosts leave unbound for pads */
+  /* two keyboard seats, read as raw keys (browser and Node hosts; under
+   * RetroArch the keyboard arrives as RetroPad 1 instead) */
   for (int k = 0; k < 2; k++) {
     uint32_t b = 0;
     float x = 0, y = 0;
     if (k == 0) {
-      if (KEY(LETTER('f'))) b |= IN_A;
-      if (KEY(LETTER('g'))) b |= IN_B;
-      if (KEY(LETTER('h'))) b |= IN_X;
+      if (KEY(0x2c) || KEY(LETTER('e'))) b |= IN_A;     /* space, E */
+      if (KEY(LETTER('q'))) b |= IN_B;
+      if (KEY(LETTER('r'))) b |= IN_X;
+      if (KEY(0x28)) b |= IN_START;                     /* enter */
       x = (float)(KEY(LETTER('d')) - KEY(LETTER('a')));
       y = (float)(KEY(LETTER('s')) - KEY(LETTER('w')));
     } else {
-      if (KEY(LETTER('u'))) b |= IN_A;
-      if (KEY(LETTER('o'))) b |= IN_B;
-      if (KEY(LETTER('p'))) b |= IN_X;
-      x = (float)(KEY(LETTER('l')) - KEY(LETTER('j')));
-      y = (float)(KEY(LETTER('k')) - KEY(LETTER('i')));
+      if (KEY(0x37)) b |= IN_A;                         /* . */
+      if (KEY(0x36)) b |= IN_B;                         /* , */
+      if (KEY(0x38)) b |= IN_X;                         /* / */
+      x = (float)(KEY(0x4f) - KEY(0x50));               /* right, left */
+      y = (float)(KEY(0x51) - KEY(0x52));               /* down, up */
     }
-    seat(&kb_slot[k], b, kb_prev[k], x, y, -1, k == 0 ? "KEYS WASD" : "KEYS IJKL");
+    if (x && y) { x *= 0.7071f; y *= 0.7071f; }
+    char name[16];
+    snprintf(name, sizeof name, k == 0 ? "WASD" : "ARROWS");
+    int before = kb_slot[k];
+    seat(&kb_slot[k], b, kb_prev[k], x, y, -1, name);
+    if (kb_slot[k] >= 0 && before < 0) P[kb_slot[k]].kb = k;
     kb_prev[k] = b;
   }
   /* phones */

@@ -80,7 +80,15 @@ static void pop(player_t *p, uint32_t color, const char *fmt, int v) {
   p->flash = 1.4f;
 }
 
+static void ticker_sub(const char *msg, const char *sub, uint32_t color) {
+  snprintf(G.ticker, sizeof G.ticker, "%s", msg);
+  snprintf(G.ticker_sub, sizeof G.ticker_sub, "%s", sub ? sub : "");
+  G.ticker_t = 5.5f;
+  G.ticker_color = color;
+}
+
 static void ticker(const char *msg, uint32_t color) {
+  G.ticker_sub[0] = 0;
   snprintf(G.ticker, sizeof G.ticker, "%s", msg);
   G.ticker_t = 5.0f;
   G.ticker_color = color;
@@ -208,7 +216,7 @@ int game_add_player(bool phone, int pad, const char *pid, const char *name) {
   if (slot < 0) return -1;
   player_t *p = &P[slot];
   memset(p, 0, sizeof *p);
-  p->active = true; p->phone = phone; p->pad = pad; p->hold = -1;
+  p->active = true; p->phone = phone; p->pad = pad; p->hold = -1; p->kb = -1;
   snprintf(p->pid, sizeof p->pid, "%s", pid ? pid : "");
   if (name && *name) snprintf(p->name, sizeof p->name, "%s", name);
   else snprintf(p->name, sizeof p->name, "PLAYER %d", slot + 1);
@@ -221,6 +229,7 @@ int game_add_player(bool phone, int pad, const char *pid, const char *name) {
     snprintf(msg, sizeof msg, "%s JOINED%s", p->name, phone ? " FROM A PHONE" : "");
     game_toast(msg, p->color);
     audio_play(SFX_JOIN);
+    fx_burst(FX_JOIN, p->x, 1.0f, p->z, p->color);
   }
   if (G.phase == PH_TITLE) { G.phase = PH_LOBBY; G.t = 0; }
   return slot;
@@ -333,6 +342,7 @@ static int make_project(player_t *p, int kind) {
 
 static void karma(player_t *p, int v) {
   p->karma += v; p->tasks++;
+  fx_burst(FX_KARMA, p->x, 1.6f, p->z, C_LIVE);
   pop(p, C_INK_OK, "+%d KARMA", v);
   audio_play(SFX_KARMA);
 }
@@ -352,6 +362,7 @@ static void act(player_t *p, int kind, int ref) {
         p->clout += it->value;
         G.vibe = fminf(100, G.vibe + 1);
         S[ST_SHOW].timer = 4;
+        fx_burst(FX_CONFETTI, S[ST_SHOW].x, 1.0f, S[ST_SHOW].z, p->color);
         pop(p, C_HAZARD, "+%d CLOUT", it->value);
         snprintf(msg, sizeof msg, "%s SHOWED OFF: %s", p->name, item_name(it));
         game_toast(msg, C_HAZARD);
@@ -599,7 +610,13 @@ static void player_update(player_t *p, float dt) {
     working = true;
     float before = p->work;
     p->work += dt;
-    if ((int)(before * 4) != (int)(p->work * 4)) audio_play(c.kind == W_CUT ? SFX_LASER : SFX_TICK);
+    if ((int)(before * 4) != (int)(p->work * 4)) {
+      audio_play(c.kind == W_CUT ? SFX_LASER : SFX_TICK);
+      if (c.kind == W_CUT) fx_burst(FX_SPARK, S[ST_LASER].x + (frnd() - 0.5f) * 1.6f, 1.2f, S[ST_LASER].z + (frnd() - 0.5f) * 0.8f, 0xff5a2a);
+      else if (c.kind == W_DISH) fx_burst(FX_STEAM, S[ST_SINK].x, 1.2f, S[ST_SINK].z, 0xffffff);
+      else if (c.kind == W_FLOOR && c.ref >= 0) fx_burst(FX_DUST, I[c.ref].x, 0.3f, I[c.ref].z, 0xd8b47a);
+      else if (c.kind == W_BENCH) fx_burst(FX_SPARK, S[ST_BENCH].x + 0.8f, 1.0f, S[ST_BENCH].z, 0x8fbde6);
+    }
     if (p->work >= need) { act(p, c.kind, c.ref); p->work = 0; p->work_kind = W_NONE; }
   } else {
     p->work = 0; p->work_kind = W_NONE;
@@ -617,6 +634,21 @@ static void player_update(player_t *p, float dt) {
     p->bubble = 2.4f; p->bubble_text = (int)(rnd() % COUNT(PROPOSALS)); p->proposals++;
     pop(p, C_SMOKE, "+0 CLOUT", 0);
     audio_play(SFX_TALK);
+  }
+
+  /* where the thing in your hands goes: drawn as an arrow, so nobody has to guess */
+  p->has_goal = false;
+  if (p->hold >= 0) {
+    int t = I[p->hold].type, st = -1;
+    const char *lab = NULL;
+    if (t == IT_PROJECT) { st = ST_SHOW; lab = "SHOW IT OFF AT SHOW & TELL"; }
+    else if (t == IT_DONATION) { st = ST_FREEPILE; lab = "TAKE IT TO THE FREE PILE"; }
+    else if (is_junk(t)) { st = ST_TRASH; lab = "THROW IT IN THE TRASH"; }
+    else if (t == IT_PLYWOOD) {
+      if (S[ST_LASER].state == S_IDLE) { st = ST_LASER; lab = "LOAD IT INTO PEWPEW 9000"; }
+      else { st = ST_FREEPILE; lab = "LASER IS BUSY. FREE PILE IT"; }
+    }
+    if (st >= 0) { p->has_goal = true; p->goal_st = st; p->goal_x = S[st].x; p->goal_z = S[st].z; p->goal_label = lab; }
   }
 
   /* movement (not while hands are busy on a hold task) */
@@ -758,20 +790,20 @@ static void npc_update(npc_t *n, float dt) {
 /* ── events ──────────────────────────────────────────────────────── */
 
 enum { E_NONE, E_HEAT, E_HABOOB, E_TACOS, E_LANDLORD, E_DAISY, E_DONATION, E_STRANGE, E_FRIDGE, E_SPAGHETTI, E_COFFEE };
-static const struct { const char *text; int effect; int weight; } EVENTS[] = {
-  { "LINUX NIGHT: CANCELED.", E_NONE, 1 },
-  { "QUIET NIGHT. NOTHING HAPPENS. ENJOY IT.", E_NONE, 1 },
-  { "5TH THURSDAY?! IT'S BLASPHEMY!", E_NONE, 1 },
-  { "IT IS 118 OUTSIDE. THE AC IS LEAKING.", E_HEAT, 3 },
-  { "HABOOB! DUST ON EVERYTHING.", E_HABOOB, 3 },
-  { "SOMEBODY BROUGHT TACOS.", E_TACOS, 3 },
-  { "LANDLORD WALKTHROUGH IN 10 SECONDS.", E_LANDLORD, 3 },
-  { "POWER STRIP DAISY CHAIN DETECTED.", E_DAISY, 3 },
-  { "DONATION AT THE FRONT DOOR.", E_DONATION, 3 },
-  { "ANY PARTICULAR REASON WHY DR. STRANGE IS DOWN?", E_STRANGE, 2 },
-  { "MYSTERY FOOD IN THE FRIDGE.", E_FRIDGE, 3 },
-  { "PRINT LEFT RUNNING. SPAGHETTI.", E_SPAGHETTI, 2 },
-  { "COFFEE AND COWORKING RAN LONG. GOOD VIBES.", E_COFFEE, 2 },
+static const struct { const char *text, *sub; int effect; int weight; } EVENTS[] = {
+  { "LINUX NIGHT: CANCELED.", "NOTHING HAPPENS. AS USUAL.", E_NONE, 1 },
+  { "QUIET NIGHT. NOTHING HAPPENS.", "ENJOY IT.", E_NONE, 1 },
+  { "5TH THURSDAY?! IT'S BLASPHEMY!", "IT IS TUESDAY. NOTHING HAPPENS.", E_NONE, 1 },
+  { "IT IS 118 OUTSIDE.", "EVERYONE SLOWS DOWN. THE AC LEAKS: MOP IT UP.", E_HEAT, 3 },
+  { "HABOOB!", "DUST ON THE FLOOR AND IN THE LASER. SWEEP IT.", E_HABOOB, 3 },
+  { "SOMEBODY BROUGHT TACOS.", "VIBE UP. SO ARE THE DISHES.", E_TACOS, 3 },
+  { "LANDLORD WALKTHROUGH IN 10 SECONDS.", "GET CLUTTER UNDER 50 OR LOSE VIBE.", E_LANDLORD, 3 },
+  { "POWER STRIP DAISY CHAIN DETECTED.", "UNPLUG IT. THE FIRE MARSHAL HATES THESE.", E_DAISY, 3 },
+  { "DONATION AT THE FRONT DOOR.", "CARRY IT TO THE FREE PILE.", E_DONATION, 3 },
+  { "ANY PARTICULAR REASON WHY DR. STRANGE IS DOWN?", "THE PRINTER JAMMED. HOLD YOUR BUTTON ON IT TO FIX.", E_STRANGE, 2 },
+  { "MYSTERY FOOD IN THE FRIDGE.", "SOMEONE HAS TO DEAL WITH IT. HOLD ON THE FRIDGE.", E_FRIDGE, 3 },
+  { "PRINT LEFT RUNNING.", "SPAGHETTI ON THE FLOOR. TRASH IT.", E_SPAGHETTI, 2 },
+  { "COFFEE AND COWORKING RAN LONG.", "GOOD VIBES.", E_COFFEE, 2 },
 };
 
 static void spawn_donation(void) {
@@ -798,7 +830,7 @@ static void fire_event(void) {
   for (e = 0; e < COUNT(EVENTS); e++) { r -= EVENTS[e].weight; if (r < 0) break; }
   if (e == G.event) e = (e + 1) % COUNT(EVENTS);
   G.event = e;
-  ticker(EVENTS[e].text, C_HAZARD);
+  ticker_sub(EVENTS[e].text, EVENTS[e].sub, C_HAZARD);
   audio_play(SFX_ALARM);
   float x, z;
   switch (EVENTS[e].effect) {
@@ -810,7 +842,7 @@ static void fire_event(void) {
     case E_HABOOB:
       S[ST_LASER].dust += 45;
       if (S[ST_LASER].dust >= 100 && S[ST_LASER].state == S_IDLE) S[ST_LASER].state = S_BROKEN;
-      for (int i = 0; i < 3; i++) { floor_spot(&x, &z); spawn_item(IT_SAWDUST, x, z, 0, 0); }
+      for (int i = 0; i < 3; i++) { floor_spot(&x, &z); spawn_item(IT_SAWDUST, x, z, 0, 0); fx_burst(FX_DUST, x, 0.5f, z, 0xd8b47a); }
       break;
     case E_TACOS:
       G.vibe = fminf(100, G.vibe + 10);
@@ -878,7 +910,7 @@ void game_start_night(void) {
   for (int i = 0; i < 2; i++) { floor_spot(&x, &z); spawn_item(IT_SAWDUST, x, z, 0, 0); }
   spawn_item(IT_SCRAP, -6.5f, -4.0f, 0, 0);
   spawn_donation();
-  ticker("HACK YOUR HACKERSPACE. TUESDAY. 7:00 PM.", C_HAZARD);
+  ticker_sub("HACK YOUR HACKERSPACE. TUESDAY 7 PM.", "MAKE COOL STUFF FOR CLOUT. KEEP THE SPACE OPEN FOR KARMA.", C_HAZARD);
   audio_music(G.attract ? 1 : 2);
   if (!G.attract) audio_play(SFX_ALARM);
 }
@@ -953,8 +985,8 @@ void game_update(float dt) {
   if (G.landlord > 0) {
     G.landlord -= dt;
     if (G.landlord <= 0) {
-      if (G.clutter > 50) { G.vibe -= 15; ticker("THE LANDLORD SAW THE FREE PILE. VIBE DOWN.", C_RUST); audio_play(SFX_BAD); }
-      else { G.vibe = fminf(100, G.vibe + 10); ticker("THE LANDLORD WAS IMPRESSED. THIS HAS NEVER HAPPENED.", C_LIVE); audio_play(SFX_WIN); }
+      if (G.clutter > 50) { G.vibe -= 15; ticker_sub("THE LANDLORD SAW THE FREE PILE.", "VIBE -15.", C_RUST); audio_play(SFX_BAD); }
+      else { G.vibe = fminf(100, G.vibe + 10); ticker_sub("THE LANDLORD WAS IMPRESSED.", "THIS HAS NEVER HAPPENED. VIBE +10.", C_LIVE); audio_play(SFX_WIN); }
     }
   }
 
@@ -970,13 +1002,13 @@ void game_update(float dt) {
   else if (G.clutter < 25) G.vibe = fminf(100, G.vibe + dt * 0.15f);
   G.vibe -= dt * 0.12f;   /* entropy: vibes decay unless someone tends them */
   if (G.clutter >= 100) {
-    if (G.fire_warn == 0) { ticker("FIRE MARSHAL ON THE WAY. CLEAN SOMETHING.", C_FAULT); audio_play(SFX_ALARM); }
+    if (G.fire_warn == 0) { ticker_sub("FIRE MARSHAL ON THE WAY!", "CLEAN SOMETHING NOW OR THE NIGHT IS OVER.", C_FAULT); audio_play(SFX_ALARM); }
     G.fire_warn += dt;
   } else G.fire_warn = fmaxf(0, G.fire_warn - dt * 0.5f);
 
   if (!G.attract && G.t > G.night_len - 30 && G.t - dt <= G.night_len - 30) {
     audio_music(3);
-    ticker("10:30 PM. CLOSING TIME. WHO IS DOING THE DISHES?", C_HAZARD);
+    ticker_sub("10:30 PM. CLOSING TIME.", "30 SECONDS LEFT. WHO IS DOING THE DISHES?", C_HAZARD);
   }
   if (G.fire_warn >= 5) end_night(END_FIRE);
   else if (G.vibe <= 0) { G.vibe = 0; end_night(END_BURNOUT); }

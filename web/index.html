@@ -79,11 +79,11 @@
       <div class="eyebrow">Controls</div>
       <h3>Pads, keys, phones</h3>
       <dl>
-        <dt>Pad</dt><dd>Stick or d-pad moves. A does it (hold for work). B drops. X proposes. Start begins the night.</dd>
-        <dt>Keys 1</dt><dd>Arrows, X or Space (A), Z (B), C (X), Enter (Start)</dd>
-        <dt>Keys 2</dt><dd>WASD, F (A), G (B), H (X)</dd>
-        <dt>Keys 3</dt><dd>IJKL, U (A), O (B), P (X)</dd>
-        <dt>Phone</dt><dd>Scan the QR on screen, or open the phone controller and type the room code.</dd>
+        <dt>Player 1</dt><dd>WASD to move. Space (or E) does it, hold for work. Q drops. R proposes.</dd>
+        <dt>Player 2</dt><dd>Arrows to move. Period does it. Comma drops. Slash proposes.</dd>
+        <dt>Start</dt><dd>Enter begins the night (or wait, it starts by itself).</dd>
+        <dt>Pads</dt><dd>Plug in up to 4. Stick moves, A does it, B drops, X proposes.</dd>
+        <dt>Phones</dt><dd>Scan the QR on screen, or open the phone controller and type the room code.</dd>
       </dl>
     </div>
     <div class="card">
@@ -107,12 +107,11 @@ const BTN = { A: 1, B: 2, X: 4, Y: 8, L: 16, R: 32, START: 64, SELECT: 128, UP: 
 /* KeyboardEvent.code to USB HID usage, for the cart's raw keyboard seats */
 function hid(code) {
   if (/^Key[A-Z]$/.test(code)) return 0x04 + code.charCodeAt(3) - 65;
-  return { Enter: 0x28, Space: 0x2c, ArrowRight: 0x4f, ArrowLeft: 0x50, ArrowDown: 0x51, ArrowUp: 0x52 }[code] ?? 0;
+  return { Enter: 0x28, Space: 0x2c, Comma: 0x36, Period: 0x37, Slash: 0x38,
+    ArrowRight: 0x4f, ArrowLeft: 0x50, ArrowDown: 0x51, ArrowUp: 0x52 }[code] ?? 0;
 }
-/* keyboard seat 1 rides pad 1; WASD/FGH and IJKL/UOP go to the cart as raw keys */
-const PAD_KEYS = { ArrowUp: BTN.UP, ArrowDown: BTN.DOWN, ArrowLeft: BTN.LEFT, ArrowRight: BTN.RIGHT,
-  KeyX: BTN.A, Space: BTN.A, KeyZ: BTN.B, KeyC: BTN.X, Enter: BTN.START };
-let kbButtons = 0;
+/* the keyboard goes to the cart as raw keys: it has two keyboard seats of its own */
+const GAME_KEYS = new Set(['Space', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Period', 'Comma', 'Slash']);
 
 let host = null, audio = null, nextTime = 0;
 
@@ -129,9 +128,6 @@ function pads() {
     if (b(12)) bits |= BTN.UP; if (b(13)) bits |= BTN.DOWN; if (b(14)) bits |= BTN.LEFT; if (b(15)) bits |= BTN.RIGHT;
     out.push({ connected: true, buttons: bits, leftX: Math.round((g.axes[0] || 0) * 32767), leftY: Math.round((g.axes[1] || 0) * 32767), name: g.id });
   }
-  /* the keyboard is pad 1 when no gamepad has taken it */
-  if (!out[0]) out[0] = { connected: true, buttons: kbButtons, leftX: 0, leftY: 0, name: 'keyboard' };
-  else out[0].buttons |= kbButtons;
   return out.map((p) => p || { connected: false, buttons: 0 });
 }
 
@@ -169,7 +165,7 @@ async function start() {
   }
   host.autoWireLifecycle?.(window);
   $('gate').style.display = 'none';
-  status('Running. Press A, X or Space to clock in.');
+  status('Running. Space (WASD player) or Period (arrows player) to clock in. Pads: A.');
   canvas.focus?.();
   const frame = async () => {
     try {
@@ -187,19 +183,20 @@ async function start() {
 $('start').addEventListener('click', start);
 $('fs').addEventListener('click', () => $('stage').requestFullscreen?.());
 
+const held = new Set();
 window.addEventListener('keydown', (e) => {
   if (!host) return;
-  if (PAD_KEYS[e.code]) { kbButtons |= PAD_KEYS[e.code]; e.preventDefault(); }
+  if (GAME_KEYS.has(e.code)) e.preventDefault();   /* no page scrolling while you play */
   const k = hid(e.code);
-  if (k && !e.repeat) host.keyDown(k, 0);
+  if (k && !e.repeat) { host.keyDown(k, 0); held.add(k); }
 });
 window.addEventListener('keyup', (e) => {
   if (!host) return;
-  if (PAD_KEYS[e.code]) kbButtons &= ~PAD_KEYS[e.code];
   const k = hid(e.code);
-  if (k) host.keyUp(k, 0);
+  if (k) { host.keyUp(k, 0); held.delete(k); }
 });
-window.addEventListener('blur', () => (kbButtons = 0));
+/* a key held while the tab loses focus would stay down forever */
+window.addEventListener('blur', () => { for (const k of held) host && host.keyUp(k, 0); held.clear(); });
 </script>
 </body>
 </html>

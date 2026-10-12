@@ -33,12 +33,24 @@ When nobody is playing, the cabinet runs an attract mode. Three archetypes play 
 | | Move | Do it (hold for work) | Drop | Propose | Begin |
 | --- | --- | --- | --- | --- | --- |
 | Gamepad (any of 4) | stick or d-pad | A (south) | B (east) | X or Y | Start |
+| Keyboard player 1 | WASD | Space (or E) | Q | R | Enter |
+| Keyboard player 2 | arrows | . (period) | , (comma) | / (slash) | Enter |
 | Phone | drag the stick box | A | B | X | Start the night |
-| Keyboard, browser player | arrows | X or Space | Z | C | Enter |
-| Keyboard seat 2 | WASD | F | G | H | |
-| Keyboard seat 3 | IJKL | U | O | P | |
+| Keyboard under RetroArch | arrows | Z | X | A | Enter |
 
-Press A or Start on any pad to clock in. The night starts when someone presses Start, or by itself 25 seconds after the first person joins. Drop in any time.
+Press your "do it" button to clock in. The night starts when someone presses Start or Enter, or by itself 25 seconds after the first person joins. Drop in any time.
+
+The two keyboard players read raw keys, which the browser player and the Node host deliver. Under RetroArch (Batocera) the keyboard arrives as RetroPad 1 with RetroArch's own bindings instead, shown in the last row.
+
+## Never guess what to do
+
+- Whatever you are carrying gets an arrow on the floor and a highlight on the place it goes ("SHOW IT OFF AT SHOW & TELL", "THROW IT IN THE TRASH").
+- Under your feet is a prompt with your own button on it: A for a pad, SPACE or . for the keyboard.
+- Every station has an amber edge if it makes clout or a teal edge if it is karma work, and a red ! when something is wrong there.
+- Messes on the floor get a ring and a label (SWEEP ME, MOP ME, UNPLUG ME). Junk says TRASH ME. Newbies say SAY HI, then LEAVING!
+- The first forty seconds of every night, a coach card walks through the five things to know.
+- Every event banner says what it means ("HABOOB! Dust on the floor and in the laser. Sweep it.").
+- The lobby and the attract screen show a how-to board and a button chart.
 
 ## Phones
 
@@ -99,6 +111,16 @@ WAV=build/night.wav node tools/shot.mjs ...                               # and 
 PACE=1 node tools/shot.mjs ... & node tools/phone-sim.mjs ROOM "NAME"     # a fake phone over the real relay
 ```
 
+## The music
+
+Three written cues, all in E minor, all synthesized live in the cart (previews: [lobby](docs/music-lobby.m4a), [night](docs/music-night.m4a), [closing time](docs/music-closing.m4a)):
+
+- **Coffee and Coworking** (lobby and attract): city pop, 112 bpm, half-time kick, a lazy arp and a soft melody.
+- **Hack Your Hackerspace** (the night): synthwave, 140 bpm. Intro on pad and arp, a verse without snare, a chorus with everything, a bigger second verse, a stripped bridge (Am C G B, borrowing the D#) so the last chorus lands. The second time through, the hats go to sixteenths and a counter melody comes in a third below the hook, and the last chorus goes up an octave.
+- **Who Is Doing The Dishes** (the last 30 seconds): synthcore, 168 bpm, the hook on a loop with every layer.
+
+The songs are data at the top of `src/audio_bellows.cpp` in doot-doot-revolution's note format (`E5:4 G5:2 | ...`, lengths in sixteenths), so writing a new one is editing strings.
+
 ## How it is made
 
 | Part | What it is |
@@ -107,7 +129,7 @@ PACE=1 node tools/shot.mjs ... & node tools/phone-sim.mjs ROOM "NAME"     # a fa
 | [src/game.c](src/game.c) | The night: stations, messes, newbies, events, meters, scoring, the archetype bots |
 | [src/world.c](src/world.c) | The 3D space in [three.c](https://github.com/monteslu/three.c): the three.js API in C, drawing three.js r186's own programs |
 | [src/draw.c](src/draw.c), [src/hud.c](src/hud.c) | The 2D layer in HeatSync's GANTRY theme: stb_truetype text, panels, caution tape, the QR, and the HeatSync mark rasterized from its official paths |
-| [src/audio_bellows.cpp](src/audio_bellows.cpp) | Music and effects on [Bellows](https://bellows.live) (bellows-embedded, the C++ port of its DSP core): E minor punk over Em C G D at three intensities, FM bells for clout, plucked strings for karma |
+| [src/audio_bellows.cpp](src/audio_bellows.cpp) | Music and effects on [Bellows](https://bellows.live) (bellows-embedded, the C++ port of its DSP core), written the way doot-doot-revolution writes songs: sections, a chord per bar, written hooks, layers in and out, fills, voice-led pads, reverb and delay sends, a compressor and limiter |
 | [src/net.c](src/net.c) | The CLASP client, about 150 lines of C |
 | [src/content.h](src/content.h) | Every word in the game. Edit freely |
 | [tools/states.txt](tools/states.txt) | The r186 material states the game draws; `build.sh` turns them into a program table with three.c's `gen-project-table.mjs` |

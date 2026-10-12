@@ -8,6 +8,7 @@
 
 t3_camera *world_cam;
 static t3_scene *SC;
+static t3_light *laser_glow, *kitchen_lamp, *bench_lamp;
 
 /* shared geometries and materials: meshes that share both are drawn as one
  * instanced draw by three.c */
@@ -66,6 +67,54 @@ static t3_mesh *sign(t3_texture *t, float w, float h, float x, float y, float z,
   return me;
 }
 
+/* the stuff every hackerspace has: shelving, bins, plants, string lights */
+static void build_props(void) {
+  t3_material *bins[4] = { mat(C_RUST, 0.7f, 0), mat(C_INFO, 0.7f, 0), mat(C_HAZARD, 0.6f, 0), mat(0x2f8562, 0.7f, 0) };
+  /* shelving units along the back wall, full of labelled bins */
+  for (int u = 0; u < 2; u++) {
+    float sx = u == 0 ? -10.4f : 7.6f;
+    for (int lvl = 0; lvl < 3; lvl++) BOX(&SC->base, m_steel_hi, 1.6f, 0.06f, 0.55f, sx, 0.4f + lvl * 0.75f, -6.7f);
+    BOX(&SC->base, m_steel_hi, 0.06f, 2.0f, 0.55f, sx - 0.8f, 1.0f, -6.7f);
+    BOX(&SC->base, m_steel_hi, 0.06f, 2.0f, 0.55f, sx + 0.8f, 1.0f, -6.7f);
+    for (int lvl = 0; lvl < 3; lvl++) for (int b = 0; b < 3; b++)
+      BOX(&SC->base, bins[(lvl + b + u) & 3], 0.42f, 0.3f, 0.4f, sx - 0.5f + b * 0.5f, 0.6f + lvl * 0.75f, -6.65f);
+  }
+  /* a rug under the lurker couch, and one by the front door */
+  t3_mesh *rug = BOX(&SC->base, mat(0x4a2f5c, 0.95f, 0), 4.2f, 0.02f, 2.4f, -4.0f, 0.01f, 2.0f);
+  rug->base.cast_shadow = false;
+  t3_mesh *mat_ = BOX(&SC->base, mat(0x3a2e22, 0.95f, 0), 2.0f, 0.02f, 1.0f, -8.0f, 0.01f, 6.4f);
+  mat_->base.cast_shadow = false;
+  /* painted walkway lanes: amber floor lines, the way a shop marks its aisles */
+  t3_material *lane = mat(0x7a5a24, 0.9f, 0);
+  struct { float x, z, w, d; } L[] = {
+    { -1.5f, -3.7f, 15.0f, 0.08f }, { -1.5f, 4.6f, 15.0f, 0.08f }, { -9.2f, 0.45f, 0.08f, 8.3f }, { 6.2f, 0.45f, 0.08f, 8.3f },
+  };
+  for (unsigned i = 0; i < sizeof L / sizeof L[0]; i++) {
+    t3_mesh *l = BOX(&SC->base, lane, L[i].w, 0.012f, L[i].d, L[i].x, 0.006f, L[i].z);
+    l->base.cast_shadow = false;
+  }
+  /* plants: somebody's pothos, somehow still alive */
+  t3_material *pot = mat(0x9a3f20, 0.8f, 0), *leaf = mat(0x3f7a3a, 0.85f, 0);
+  float pots[][2] = { { -11.5f, -5.9f }, { 11.4f, -2.2f }, { -11.5f, 6.4f }, { 5.9f, 6.5f } };
+  for (int i = 0; i < 4; i++) {
+    part(&SC->base, g_cyl, pot, 0.28f, 0.45f, 0.28f, pots[i][0], 0.225f, pots[i][1]);
+    part(&SC->base, g_sphere, leaf, 0.45f, 0.4f, 0.45f, pots[i][0], 0.7f, pots[i][1]);
+    part(&SC->base, g_sphere, leaf, 0.3f, 0.35f, 0.3f, pots[i][0] + 0.2f, 0.95f, pots[i][1] + 0.1f);
+  }
+  /* string lights along the back wall */
+  t3_material *bulb[3] = { mat(0xffd27a, 0.4f, 0), mat(0xff8a5c, 0.4f, 0), mat(0x8fd6ff, 0.4f, 0) };
+  for (int i = 0; i < 3; i++) { bulb[i]->emissive = bulb[i]->color; bulb[i]->emissive_intensity = 3.0f; }
+  for (int i = 0; i < 40; i++) {
+    float x = -11.8f + i * 0.6f;
+    float sag = 0.18f * sinf((i % 8) / 8.f * 3.14159f);
+    t3_mesh *b = part(&SC->base, g_sphere, bulb[i % 3], 0.07f, 0.07f, 0.07f, x, 3.15f - sag, -6.95f);
+    b->base.cast_shadow = false;
+  }
+  for (int i = 0; i < 4; i++) t3_release(bins[i]);
+  for (int i = 0; i < 3; i++) t3_release(bulb[i]);
+  t3_release(lane); t3_release(pot); t3_release(leaf);
+}
+
 static void build_signs(void) {
   /* the lockup: the mark, then the wordmark set in Charis SIL */
   hud_clear();
@@ -98,6 +147,28 @@ static void build_signs(void) {
   hud_text(F_H2, 22, 150, "BUT YOU.", C_HAZARD, 255, AL_LEFT);
   hud_tape(0, 238, 512, 18, 24);
   sign(hud_texture(512, 256), 2.8f, 1.4f, 12.08f, 1.9f, -2.6f, -1.5708f);
+
+  /* pegboard behind the electronics bench: every tool has an outline, half are missing */
+  hud_clear();
+  hud_rect(0, 0, 512, 256, 0xb08a5a, 255);
+  for (int y = 8; y < 256; y += 16) for (int x = 8; x < 512; x += 16) hud_circle(x, y, 2, 0x5a4428, 255);
+  static const struct { int x, y, w, h; uint32_t c; } TOOLS[] = {
+    { 30, 30, 18, 120, 0xc2542c }, { 70, 40, 60, 14, 0x3a342b }, { 150, 26, 14, 100, 0x5e93c4 }, { 190, 30, 40, 40, 0x15120f },
+    { 260, 40, 16, 110, 0xf2ab1e }, { 300, 30, 70, 18, 0x9b7fd0 }, { 400, 30, 20, 120, 0x15120f }, { 440, 60, 50, 50, 0xc2542c },
+  };
+  for (unsigned i = 0; i < sizeof TOOLS / sizeof TOOLS[0]; i++) {
+    if (i % 3 == 2) hud_frame(TOOLS[i].x, TOOLS[i].y, TOOLS[i].w, TOOLS[i].h, 3, 0x2a1f12, 255);   /* the missing one */
+    else hud_rect(TOOLS[i].x, TOOLS[i].y, TOOLS[i].w, TOOLS[i].h, TOOLS[i].c, 255);
+  }
+  hud_text(F_MONO_S, 24, 200, "IF YOU BORROW IT, PUT IT BACK.", 0x2a1f12, 255, AL_LEFT);
+  sign(hud_texture(512, 256), 4.0f, 2.0f, 9.6f, 1.9f, -6.98f, 0);
+
+  /* the OPEN sign by the front door */
+  hud_clear();
+  hud_rect(0, 0, 256, 128, 0x14110d, 255);
+  hud_frame(4, 4, 248, 120, 6, 0xff4f8a, 255);
+  hud_text(F_H1, 128, 22, "OPEN", 0xff7fae, 255, AL_CENTER);
+  sign(hud_texture(256, 128), 1.6f, 0.8f, -11.95f, 2.2f, 5.0f, 1.5708f);
 
   /* caution tape on the floor around the laser */
   hud_clear();
@@ -290,9 +361,10 @@ void world_init(t3_scene *scene) {
 
   build_room();
   build_stations();
+  build_props();
   build_signs();
 
-  t3_object_add(&SC->base, t3_hemisphere_light_new(0xfff2dc, 0x3a2e22, 2.0f));
+  t3_object_add(&SC->base, t3_hemisphere_light_new(0xfff2dc, 0x3a2e22, 1.7f));
   t3_light *sun = t3_directional_light_new(0xffe2b8, 2.8f);
   t3_object_set_position(sun, -6, 16, 9);
   sun->base.cast_shadow = true;
@@ -302,6 +374,17 @@ void world_init(t3_scene *scene) {
   t3_camera_update_projection_matrix(sc);
   sun->shadow->bias = -0.0006f;
   t3_object_add(&SC->base, sun);
+
+  /* practical lights: warm over the kitchen, cool over the bench, and the laser's own glow */
+  kitchen_lamp = t3_point_light_new(0xffb36b, 14.0f, 9.0f, 2.0f);
+  t3_object_set_position(kitchen_lamp, -9.5f, 3.0f, 3.5f);
+  t3_object_add(&SC->base, kitchen_lamp);
+  bench_lamp = t3_point_light_new(0x8fbde6, 12.0f, 9.0f, 2.0f);
+  t3_object_set_position(bench_lamp, 8.5f, 3.0f, -4.5f);
+  t3_object_add(&SC->base, bench_lamp);
+  laser_glow = t3_point_light_new(0xff3b2a, 0.0f, 6.0f, 2.0f);
+  t3_object_set_position(laser_glow, -5.0f, 1.8f, -5.0f);
+  t3_object_add(&SC->base, laser_glow);
 
   world_cam = t3_perspective_camera_new(38, 1280.f / 720.f, 0.5f, 80);
   t3_object_set_position(world_cam, 0, 19.5f, 13.0f);
@@ -361,8 +444,27 @@ t3_object *world_person(uint32_t color, bool newbie, t3_mesh **body) {
     part(g, g_sphere, bm, 0.26f, 0.12f, 0.26f, 0, 1.4f, 0);   /* a cap, in the player colour */
     BOX(g, bm, 0.3f, 0.04f, 0.22f, 0, 1.4f, 0.2f);
   }
+  /* legs then arms, last in the group so world_sync can swing them */
   part(g, g_cyl, m_char, 0.09f, 0.35f, 0.09f, -0.13f, 0.17f, 0);
   part(g, g_cyl, m_char, 0.09f, 0.35f, 0.09f, 0.13f, 0.17f, 0);
+  for (int side = -1; side <= 1; side += 2) {   /* shoulder pivots, the arm hanging below */
+    t3_object *sh = t3_group_new();
+    t3_object_set_position(sh, side * 0.38f, 0.95f, 0);
+    t3_object_add(g, sh);
+    t3_release(sh);
+    part(sh, g_cyl, bm, 0.07f, 0.42f, 0.07f, 0, -0.21f, 0);
+    part(sh, g_sphere, m_skin, 0.08f, 0.08f, 0.08f, 0, -0.44f, 0);
+  }
+  if (!newbie) {
+    /* a ring on the floor in the player's colour: you can always find yourself */
+    t3_material *rm = mat(color, 0.4f, 0);
+    rm->emissive = t3_color_hex(color); rm->emissive_intensity = 0.9f;
+    t3_mesh *ring = part(g, g_disc, rm, 0.62f, 0.02f, 0.62f, 0, 0.015f, 0);
+    ring->base.cast_shadow = false;
+    t3_mesh *hole = part(g, g_disc, m_char, 0.48f, 0.022f, 0.48f, 0, 0.016f, 0);
+    hole->base.cast_shadow = false;
+    t3_release(rm);
+  }
   t3_release(bm);
   t3_object_set_scale(g, 1.25f, 1.25f, 1.25f);
   if (body) *body = b;
@@ -392,6 +494,17 @@ void world_sync(float dt) {
     float hop = fabsf(sinf(p->bob)) * 0.12f;
     t3_object_set_position(p->obj, p->x, hop, p->z);
     t3_object_set_rotation(p->obj, 0, p->face, 0);
+    /* children: ... legs (n-6, n-5), arms (n-4, n-3), ring, ring hole */
+    int n = p->obj->child_count;
+    if (n >= 6) {
+      float sw = sinf(p->bob) * 0.6f;
+      t3_object_set_rotation(p->obj->children[n - 6], sw, 0, 0);
+      t3_object_set_rotation(p->obj->children[n - 5], -sw, 0, 0);
+      bool carry = p->hold >= 0, work = p->work > 0;
+      float arm = carry ? -2.6f : work ? -1.2f + sinf(p->work * 20) * 0.4f : -sw;
+      t3_object_set_rotation(p->obj->children[n - 4], arm, 0, carry ? 0.25f : 0);
+      t3_object_set_rotation(p->obj->children[n - 3], carry ? arm : sw, 0, carry ? -0.25f : 0);
+    }
   }
   for (int i = 0; i < MAX_NPCS; i++) {
     npc_t *n = &N[i];
@@ -412,6 +525,7 @@ void world_sync(float dt) {
   }
   /* laser */
   station_t *L = &S[ST_LASER];
+  laser_glow->intensity = L->state == S_BUSY ? 10.0f + 6.0f * sinf(t * 40) : 0.0f;
   L->beam->base.visible = L->state == S_BUSY;
   if (L->state == S_BUSY) t3_object_set_position(L->beam, sinf(t * 7) * 0.9f, 1.2f, cosf(t * 5) * 0.5f);
   glow(L->light, L->state == S_BROKEN ? C_FAULT : L->state == S_DONE ? C_HAZARD : C_LIVE, L->state == S_BROKEN ? 2.5f * (0.6f + 0.4f * sinf(t * 10)) : 1.5f);

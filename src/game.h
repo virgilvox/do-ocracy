@@ -74,6 +74,11 @@ typedef struct {
   int goal, goal_ref;
   float think, stuck, side, lastx, lastz, talk_in;
   int pad;             /* local pad index, or -1 */
+  int kb;              /* keyboard seat (0, 1), or -1 */
+  bool has_goal;       /* carrying something: where it goes */
+  float goal_x, goal_z;
+  int goal_st;
+  const char *goal_label;
   char pid[25];        /* phone id */
   char name[14];
   uint32_t color;
@@ -122,6 +127,7 @@ typedef struct {
   int event;           /* index into the event table, -1 none */
   float event_t, heat, landlord;
   char ticker[96];
+  char ticker_sub[96];
   float ticker_t;
   uint32_t ticker_color;
   int toast_n;
@@ -173,6 +179,8 @@ void world_free(t3_object *o);
 extern t3_camera *world_cam;
 
 /* draw.c: the HUD side */
+enum { FX_SPARK, FX_KARMA, FX_CONFETTI, FX_DUST, FX_STEAM, FX_JOIN };
+void fx_burst(int kind, float x, float y, float z, uint32_t color);
 void draw_hud(float dt);
 bool project(float x, float y, float z, int *sx, int *sy);
 

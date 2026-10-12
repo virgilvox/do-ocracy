@@ -200,6 +200,40 @@ void hud_circle(int cx, int cy, int r, uint32_t rgb, int a) {
   }
 }
 
+/* anti-aliased thick line: distance to the segment, per pixel in its box */
+void hud_line(float x0, float y0, float x1, float y1, float t, uint32_t rgb, int a) {
+  float r = t * 0.5f;
+  int bx0 = (int)floorf(fminf(x0, x1) - r - 1), bx1 = (int)ceilf(fmaxf(x0, x1) + r + 1);
+  int by0 = (int)floorf(fminf(y0, y1) - r - 1), by1 = (int)ceilf(fmaxf(y0, y1) + r + 1);
+  if (bx0 < 0) bx0 = 0;
+  if (by0 < 0) by0 = 0;
+  if (bx1 > HUD_W - 1) bx1 = HUD_W - 1;
+  if (by1 > HUD_H - 1) by1 = HUD_H - 1;
+  float dx = x1 - x0, dy = y1 - y0, l2 = dx * dx + dy * dy;
+  for (int y = by0; y <= by1; y++) for (int x = bx0; x <= bx1; x++) {
+    float px = x + 0.5f - x0, py = y + 0.5f - y0;
+    float u = l2 > 0 ? (px * dx + py * dy) / l2 : 0;
+    if (u < 0) u = 0;
+    if (u > 1) u = 1;
+    float ex = px - u * dx, ey = py - u * dy;
+    float d = sqrtf(ex * ex + ey * ey) - r;
+    if (d > 0.5f) continue;
+    float cov = d < -0.5f ? 1.f : 0.5f - d;
+    blend(x, y, rgb, (int)(a * cov));
+  }
+}
+
+void hud_chevron(float x, float y, float dx, float dy, float size, float t, uint32_t rgb, int a) {
+  float l = sqrtf(dx * dx + dy * dy);
+  if (l < 1e-4f) return;
+  dx /= l; dy /= l;
+  float tipx = x + dx * size * 0.5f, tipy = y + dy * size * 0.5f;
+  float bx = x - dx * size * 0.5f, by = y - dy * size * 0.5f;
+  float nx = -dy * size * 0.6f, ny = dx * size * 0.6f;
+  hud_line(bx + nx, by + ny, tipx, tipy, t, rgb, a);
+  hud_line(bx - nx, by - ny, tipx, tipy, t, rgb, a);
+}
+
 void hud_ring(int cx, int cy, int r, int t, float frac, uint32_t rgb, int a) {
   float lim = frac * 6.2831853f;
   for (int y = -r - 1; y <= r + 1; y++) for (int x = -r - 1; x <= r + 1; x++) {

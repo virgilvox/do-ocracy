@@ -3,3 +3,5 @@ basic+map+trans+nearest
 standard+l1001
 standard+instbig+shadow+l1001
 basic+map
+standard+shadow+l1301+s100
+standard+instbig+shadow+l1301+s100

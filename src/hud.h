@@ -50,6 +50,9 @@ int  hud_font_h(int font);
 /* text wrapped to a width; returns the height used */
 int  hud_text_wrap(int font, int x, int y, int w, const char *s, uint32_t rgb, int a, int lh);
 void hud_circle(int cx, int cy, int r, uint32_t rgb, int a);
+void hud_line(float x0, float y0, float x1, float y1, float t, uint32_t rgb, int a);
+/* a chevron pointing along (dx, dy), centred on (x, y) */
+void hud_chevron(float x, float y, float dx, float dy, float size, float t, uint32_t rgb, int a);
 void hud_ring(int cx, int cy, int r, int t, float frac, uint32_t rgb, int a);
 /* the HeatSync mark: two colours, untouched (sun disc, then flame and arrow) */
 void hud_logo(int x, int y, int size, uint32_t flame_rgb);
