@@ -1,0 +1,18 @@
+{
+  "name": "do-ocracy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DO-OCRACY: a HeatSync Labs arcade cart for wasmcart (three.c + Bellows + CLASP phone controllers)",
+  "license": "MIT",
+  "scripts": {
+    "build": "./build.sh",
+    "shot": "node tools/shot.mjs",
+    "serve": "node tools/serve.mjs",
+    "phone": "node tools/phone-sim.mjs"
+  },
+  "devDependencies": {
+    "@clasp-to/core": "4.3.2"
+  },
+  "author": "virgilvox <hackbuildvideo@gmail.com>"
+}

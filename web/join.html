@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#15120f">
+<title>DO-OCRACY Controller</title>
+<link rel="icon" href="hsl-mark-reverse.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Mono:wght@500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@clasp-to/core@4.3.2/dist/index.global.js" crossorigin="anonymous"></script>
+<style>
+  /* GANTRY: HeatSync Labs' theme. Char and bone, amber as a fill, square
+     corners, solid offset shadows, caution tape between things. */
+  :root {
+    --char: #15120f; --grime: #1d1915; --slab: #26211b; --slab-hi: #2f2920;
+    --steel: #3a342b; --steel-hi: #4a4338; --bone: #ece3d3; --ash: #a79d8c; --smoke: #756c5e;
+    --hazard: #f2ab1e; --tape: #14110d; --shadow: #0a0806; --live: #5fb892; --ink-ok: #7fd0aa;
+    --fault: #d24f3a; --ink-err: #ef7b68; --me: #f2ab1e;
+    --display: 'Archivo Black', 'Archivo', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--char); color: var(--bone); font-family: var(--mono); overflow: hidden; }
+  body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); user-select: none; -webkit-user-select: none; touch-action: none; }
+  .tape { height: 14px; flex: none; background: repeating-linear-gradient(-45deg, var(--hazard) 0 12px, var(--tape) 12px 24px); border-bottom: 2px solid var(--tape); }
+  .eyebrow { font: 600 11px/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--ash); }
+  h1 { font: 400 clamp(34px, 11vw, 64px)/0.92 var(--display); margin: 6px 0 0; letter-spacing: -0.01em; }
+  .card { background: var(--slab); border: 2px solid var(--steel-hi); box-shadow: 6px 6px 0 var(--shadow); padding: 16px; }
+  button { font: 700 15px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; border: 2px solid var(--tape); border-radius: 0; cursor: pointer; color: var(--tape); }
+
+  /* join screen */
+  #join { flex: 1; display: flex; flex-direction: column; gap: 18px; padding: 20px 16px; overflow-y: auto; }
+  .brand { display: flex; gap: 14px; align-items: center; }
+  .brand img { width: 64px; height: 64px; }
+  label { display: block; margin: 14px 0 6px; }
+  input { width: 100%; font: 700 22px/1 var(--mono); padding: 12px; background: var(--char); color: var(--bone); border: 2px solid var(--steel-hi); border-radius: 0; text-transform: uppercase; }
+  input:focus { outline: none; border-color: var(--hazard); }
+  #room { font-family: var(--display); font-size: 34px; letter-spacing: 0.12em; color: var(--hazard); }
+  .go { width: 100%; height: 56px; margin-top: 18px; background: var(--hazard); box-shadow: 6px 6px 0 var(--shadow); font-size: 18px; }
+  .go:active { transform: translate(2px, 2px); box-shadow: 4px 4px 0 var(--shadow); }
+  .fine { font-size: 12px; color: var(--smoke); line-height: 1.6; }
+  #msg { min-height: 1.4em; color: var(--ink-err); font-size: 13px; }
+
+  /* the pad */
+  #pad { flex: 1; display: none; flex-direction: column; min-height: 0; }
+  .bar { display: flex; align-items: stretch; gap: 0; border-bottom: 2px solid var(--steel-hi); background: var(--slab); flex: none; }
+  .chip { width: 14px; background: var(--me); flex: none; }
+  .who { flex: 1; padding: 8px 12px; min-width: 0; }
+  .who .name { font: 400 22px/1.1 var(--display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scores { display: flex; gap: 14px; padding: 8px 12px; align-items: center; }
+  .score b { display: block; font: 700 22px/1 var(--mono); }
+  .score.clout b { color: var(--hazard); }
+  .score.karma b { color: var(--ink-ok); }
+  .score span { font: 600 9px/1 var(--mono); letter-spacing: 0.2em; color: var(--ash); }
+  .status { display: flex; justify-content: space-between; gap: 10px; padding: 8px 12px; font-size: 13px; color: var(--ash); flex: none; background: var(--grime); border-bottom: 2px solid var(--steel); }
+  .status #hint { color: var(--bone); font-weight: 700; }
+  .meters { display: flex; gap: 10px; padding: 6px 12px 8px; background: var(--grime); flex: none; }
+  .meter { flex: 1; }
+  .meter i { display: block; height: 8px; background: var(--char); border: 1px solid var(--steel-hi); margin-top: 4px; }
+  .meter i u { display: block; height: 100%; width: 0; background: var(--hazard); transition: width 0.4s; }
+  .meter.vibe i u { background: var(--live); }
+  .controls { flex: 1; display: flex; gap: 12px; padding: 14px; min-height: 0; }
+  #stick { flex: 1.1; position: relative; background: var(--slab); border: 2px solid var(--steel-hi); box-shadow: 6px 6px 0 var(--shadow);
+    background-image: linear-gradient(var(--steel) 1px, transparent 1px), linear-gradient(90deg, var(--steel) 1px, transparent 1px); background-size: 28px 28px; background-position: center; }
+  #stick .label { position: absolute; left: 10px; top: 10px; }
+  #knob { position: absolute; width: 74px; height: 74px; margin: -37px 0 0 -37px; left: 50%; top: 50%; border-radius: 50%; background: var(--me); border: 3px solid var(--tape); box-shadow: 4px 4px 0 var(--shadow); pointer-events: none; transition: transform 0.05s; }
+  .btns { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1.4fr 1fr 0.5fr; gap: 12px; }
+  .btns button { box-shadow: 6px 6px 0 var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 6px; }
+  .btns button big { font: 400 clamp(30px, 9vw, 54px)/1 var(--display); }
+  .btns button small { font: 700 11px/1.2 var(--mono); letter-spacing: 0.12em; }
+  .btns button.down { transform: translate(3px, 3px); box-shadow: 3px 3px 0 var(--shadow); filter: brightness(1.15); }
+  #bA { grid-column: 1 / 3; background: var(--hazard); }
+  #bB { background: var(--bone); }
+  #bX { background: #9b7fd0; }
+  #bS { grid-column: 1 / 3; background: var(--steel-hi); color: var(--bone); font-size: 12px; }
+  .toast { position: fixed; left: 16px; right: 16px; top: 30%; text-align: center; padding: 18px; font: 400 26px/1.1 var(--display); background: var(--char); border: 2px solid var(--hazard); box-shadow: 6px 6px 0 var(--shadow); display: none; }
+  @media (orientation: landscape) and (max-height: 500px) {
+    .controls { padding: 10px; }
+    .meters { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="tape"></div>
+
+<section id="join">
+  <div class="brand">
+    <img src="hsl-mark-reverse.svg" alt="HeatSync Labs">
+    <div>
+      <div class="eyebrow">HeatSync Labs arcade</div>
+      <h1>DO-OCRACY</h1>
+    </div>
+  </div>
+  <div class="card">
+    <div class="eyebrow">Clock in</div>
+    <label class="eyebrow" for="room">Room code (on the big screen)</label>
+    <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <label class="eyebrow" for="name">Your name</label>
+    <input id="name" maxlength="12" autocomplete="nickname" autocapitalize="characters" spellcheck="false" placeholder="NEWBIE">
+    <button class="go" id="go">Clock in</button>
+    <div id="msg"></div>
+  </div>
+  <p class="fine">Your phone is a controller. Hold A to do work. B drops what you carry. X makes a proposal (it does nothing, which is the joke).<br>
+  CLOUT is for you. KARMA is for the space. If the space closes, all clout is void.<br>
+  No app. No account. Inputs ride the CLASP relay.</p>
+</section>
+
+<section id="pad">
+  <div class="bar">
+    <div class="chip" id="chip"></div>
+    <div class="who"><div class="eyebrow" id="slot">Player</div><div class="name" id="pname">...</div></div>
+    <div class="scores">
+      <div class="score clout"><span>CLOUT</span><b id="clout">0</b></div>
+      <div class="score karma"><span>KARMA</span><b id="karma">0</b></div>
+    </div>
+  </div>
+  <div class="status"><span id="phase">Connecting</span><span id="hint"></span></div>
+  <div class="meters">
+    <div class="meter"><span class="eyebrow">Clutter</span><i><u id="mc"></u></i></div>
+    <div class="meter vibe"><span class="eyebrow">Vibe</span><i><u id="mv"></u></i></div>
+  </div>
+  <div class="controls">
+    <div id="stick"><span class="eyebrow label">Move</span><div id="knob"></div></div>
+    <div class="btns">
+      <button id="bA"><big>A</big><small>Do it / hold</small></button>
+      <button id="bB"><big>B</big><small>Drop</small></button>
+      <button id="bX"><big>X</big><small>Propose</small></button>
+      <button id="bS">Start the night</button>
+    </div>
+  </div>
+</section>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const RELAY = 'wss://relay.clasp.to';
+  const $ = (id) => document.getElementById(id);
+  const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+  let pid = store.get('hsx.pid');
+  if (!pid) { pid = Math.random().toString(36).slice(2, 10); store.set('hsx.pid', pid); }
+  const hashRoom = (location.hash || '').replace('#', '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+  $('room').value = hashRoom || store.get('hsx.room') || '';
+  $('name').value = store.get('hsx.name') || '';
+  if (hashRoom) setTimeout(() => $('name').focus(), 50);
+
+  let client = null, room = '', welcomed = false, joinTimer = null, beat = null;
+  let btn = 0, sx = 0, sy = 0, lastSent = '', lastAt = 0;
+  const PHASES = ['Attract', 'Clocking in', 'Tuesday night', 'Lights out'];
+
+  function toast(text, ms = 1800) {
+    const t = $('toast'); t.textContent = text; t.style.display = 'block';
+    clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = 'none'), ms);
+  }
+  const buzz = (ms) => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+
+  function send(msg) {
+    if (!client || !client.connected) return;
+    client.emit(`/hsx/${room}/in/${pid}`, msg);
+  }
+  function sendInput(force) {
+    const m = `I${btn},${Math.round(sx * 100)},${Math.round(sy * 100)}`;
+    const now = performance.now();
+    if (!force && m === lastSent) return;
+    if (!force && now - lastAt < 33) { clearTimeout(sendInput.t); sendInput.t = setTimeout(() => sendInput(false), 34); return; }
+    lastSent = m; lastAt = now;
+    send(m);
+  }
+
+  function onMessage(value, address) {
+    if (typeof value !== 'string') return;
+    const to = address.split('/').pop();
+    if (to !== pid && to !== 'all') return;
+    const k = value[0], body = value.slice(1);
+    if (k === 'W') {
+      const [slot, color, name] = body.split('|');
+      welcomed = true; clearInterval(joinTimer);
+      document.documentElement.style.setProperty('--me', '#' + color);
+      $('slot').textContent = `Player ${slot}`;
+      $('pname').textContent = name;
+      showPad(); buzz(60);
+      toast('YOU ARE IN. LOOK FOR YOUR COLOUR.');
+    } else if (k === 'S') {
+      const [clout, karma, holding, hint] = body.split('|');
+      $('clout').textContent = clout; $('karma').textContent = karma;
+      $('hint').textContent = hint ? `A: ${hint}` : (holding ? `CARRYING ${holding}` : '');
+    } else if (k === 'P') {
+      const [phase, left, clutter, vibe] = body.split('|').map(Number);
+      $('phase').textContent = phase === 2 && left > 0 ? `${PHASES[2]}  ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : PHASES[phase] || '';
+      $('mc').style.width = Math.min(100, clutter) + '%';
+      $('mc').style.background = clutter > 80 ? 'var(--fault)' : 'var(--hazard)';
+      $('mv').style.width = Math.min(100, vibe) + '%';
+      $('bS').style.visibility = phase === 1 ? 'visible' : 'hidden';
+    } else if (k === 'Z') buzz(Number(body) || 40);
+    else if (k === 'F') { $('msg').textContent = 'The room is full (8 members). Wait for the next Tuesday.'; showJoin(); }
+    else if (k === 'R') { welcomed = false; startJoin(); }
+  }
+
+  function startJoin() {
+    const name = $('name').value.trim().toUpperCase();
+    clearInterval(joinTimer);
+    const j = () => send('J' + name);
+    j(); joinTimer = setInterval(() => { if (!welcomed) j(); }, 1500);
+  }
+
+  async function clockIn() {
+    room = $('room').value.toUpperCase().replace(/[^A-Z]/g, '');
+    if (room.length !== 4) { $('msg').textContent = 'The room code is the four letters on the big screen.'; return; }
+    store.set('hsx.room', room); store.set('hsx.name', $('name').value.trim().toUpperCase());
+    $('msg').textContent = '';
+    $('go').textContent = 'Connecting';
+    try {
+      if (client) try { client.close(); } catch {}
+      client = new CLASP.Clasp(RELAY, { name: 'do-ocracy-phone', reconnect: true });
+      await client.connect();
+      client.on(`/hsx/${room}/out/**`, onMessage);
+      client.onReconnect && client.onReconnect(() => { client.on(`/hsx/${room}/out/**`, onMessage); startJoin(); });
+      startJoin();
+      clearInterval(beat);
+      beat = setInterval(() => welcomed && sendInput(true), 400);
+      $('go').textContent = 'Waiting for the cabinet';
+      setTimeout(() => { if (!welcomed) { $('msg').textContent = 'No answer. Check the code, or the cabinet may be offline.'; $('go').textContent = 'Clock in'; } }, 8000);
+    } catch (e) {
+      $('msg').textContent = 'Could not reach the relay. Check your connection.';
+      $('go').textContent = 'Clock in';
+    }
+  }
+
+  function showPad() { $('join').style.display = 'none'; $('pad').style.display = 'flex'; }
+  function showJoin() { $('join').style.display = 'flex'; $('pad').style.display = 'none'; $('go').textContent = 'Clock in'; }
+
+  $('go').addEventListener('click', clockIn);
+  $('name').addEventListener('keydown', (e) => e.key === 'Enter' && clockIn());
+
+  /* buttons: pressed while a finger is on them */
+  const bits = { bA: 1, bB: 2, bX: 4, bS: 8 };
+  for (const [id, bit] of Object.entries(bits)) {
+    const el = $(id);
+    const down = (e) => { e.preventDefault(); btn |= bit; el.classList.add('down'); buzz(12); sendInput(false); };
+    const up = (e) => { e.preventDefault(); btn &= ~bit; el.classList.remove('down'); sendInput(false); };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointercancel', up);
+    el.addEventListener('pointerleave', up);
+  }
+
+  /* the stick: drag anywhere in the box, the knob follows */
+  const stick = $('stick'), knob = $('knob');
+  let sid = null, ox = 0, oy = 0;
+  stick.addEventListener('pointerdown', (e) => {
+    sid = e.pointerId; stick.setPointerCapture(sid);
+    const r = stick.getBoundingClientRect(); ox = e.clientX; oy = e.clientY;
+    knob.style.left = (e.clientX - r.left) + 'px'; knob.style.top = (e.clientY - r.top) + 'px';
+  });
+  stick.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== sid) return;
+    const R = 60;
+    let dx = e.clientX - ox, dy = e.clientY - oy;
+    const d = Math.hypot(dx, dy);
+    if (d > R) { dx = dx / d * R; dy = dy / d * R; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    sx = dx / R; sy = dy / R;
+    if (Math.hypot(sx, sy) < 0.18) sx = sy = 0;
+    sendInput(false);
+  });
+  const release = (e) => {
+    if (e.pointerId !== sid) return;
+    sid = null; sx = sy = 0; knob.style.transform = '';
+    knob.style.left = '50%'; knob.style.top = '50%';
+    sendInput(false);
+  };
+  stick.addEventListener('pointerup', release);
+  stick.addEventListener('pointercancel', release);
+
+  window.addEventListener('pagehide', () => send('L'));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && room && !welcomed) startJoin(); });
+})();
+</script>
+</body>
+</html>
