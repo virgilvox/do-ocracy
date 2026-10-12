@@ -394,20 +394,34 @@ static void toasts(int x, int y) {
   }
 }
 
+/* one message slot, just under the top bar, over the back wall: nothing you
+ * play with is up there, so a message never covers the floor */
+#define SLOT_Y 94
+#define SLOT_H 40
+static void slot_bar(const char *chip, uint32_t chip_c, const char *msg, uint32_t msg_c, int a, int dy) {
+  /* step the fonts down until it fits on one line */
+  int cf = F_H3, mf = F_MONO, max = HUD_W - 32;
+  int cw = hud_text_w(cf, chip) + 28;
+  int mw = msg && msg[0] ? hud_text_w(mf, msg) + 32 : 0;
+  if (cw + mw > max && mw) { mf = F_MONO_S; mw = hud_text_w(mf, msg) + 28; }
+  if (cw + mw > max) { cf = F_MONO_L; cw = hud_text_w(cf, chip) + 24; }
+  int w = cw + mw;
+  if (w > max) w = max;
+  int x = HUD_W / 2 - w / 2, y = SLOT_Y + dy;
+  hud_rect(x + 5, y + 5, w, SLOT_H, C_SHADOW, a);
+  hud_rect(x, y, w, SLOT_H, C_CHAR, a);
+  hud_rect(x, y, cw, SLOT_H, chip_c, a);
+  hud_text(cf, x + cw / 2, y + (cf == F_H3 ? 6 : 4), chip, C_TAPE, a, AL_CENTER);
+  if (mw) hud_text(mf, x + cw + 14, y + (mf == F_MONO ? 9 : 12), msg, msg_c, a, AL_LEFT);
+  hud_frame(x, y, w, SLOT_H, 2, chip_c, a);
+}
+
 static void ticker_band(void) {
   if (G.ticker_t <= 0) return;
   float k = G.ticker_t > 5.1f ? (5.5f - G.ticker_t) / 0.4f : G.ticker_t < 0.4f ? G.ticker_t / 0.4f : 1;
-  bool sub = G.ticker_sub[0] != 0;
-  int bh = sub ? 84 : 56;
-  int y = 100 - (int)((1 - k) * 80);
-  hud_tape(0, y, HUD_W, bh, T * 40);
-  int w = hud_text_w(F_H3, G.ticker) + 48;
-  if (sub) { int w2 = hud_text_w(F_MONO, G.ticker_sub) + 48; if (w2 > w) w = w2; }
-  hud_rect(HUD_W / 2 - w / 2 + 6, y + 12, w, bh - 12, C_SHADOW, 255);
-  hud_rect(HUD_W / 2 - w / 2, y + 6, w, bh - 12, C_CHAR, 255);
-  hud_frame(HUD_W / 2 - w / 2, y + 6, w, bh - 12, 3, G.ticker_color, 255);
-  hud_text(F_H3, HUD_W / 2, y + 12, G.ticker, C_BONE, 255, AL_CENTER);
-  if (sub) hud_text(F_MONO, HUD_W / 2, y + 46, G.ticker_sub, G.ticker_color == C_FAULT ? C_INK_ERR : C_HAZARD, 255, AL_CENTER);
+  int a = (int)(255 * k);
+  uint32_t c = G.ticker_color == C_FAULT ? C_FAULT : G.ticker_color == C_LIVE ? C_LIVE : C_HAZARD;
+  slot_bar(G.ticker, c, G.ticker_sub, c == C_FAULT ? C_INK_ERR : C_BONE, a, (int)((k - 1) * 20));
 }
 
 static void meter(int x, int y, int w, const char *name, const char *rule, float v, uint32_t fill, const char *right) {
@@ -437,15 +451,7 @@ static void top_bar(void) {
   snprintf(r, sizeof r, "%d", (int)G.vibe);
   meter(640, 22, 274, "VIBE", "0 = BURNOUT", G.vibe, G.vibe < 25 ? C_FAULT : C_LIVE, r);
   /* danger: say it in the middle of the screen, once it matters */
-  if (G.phase == PH_NIGHT && (c > 80 || G.vibe < 20)) {
-    bool blink = fmodf(T, 0.6f) < 0.4f;
-    const char *m = c > 80 ? "TOO MUCH CLUTTER! CLEAN UP!" : "VIBES ARE DYING! SAY HI, CLEAN UP!";
-    int w = hud_text_w(F_H3, m) + 40;
-    if (blink) {
-      hud_rect(HUD_W / 2 - w / 2, 196, w, 44, C_FAULT, 255);
-      hud_text(F_H3, HUD_W / 2, 202, m, C_BONE, 255, AL_CENTER);
-    }
-  }
+  /* danger is drawn later, in the message slot (see danger()) */
   if (G.fire_warn > 0 && fmodf(T, 0.5f) < 0.25f) hud_frame(0, 0, HUD_W, HUD_H, 12, C_FAULT, 220);
   if (G.heat > 0) hud_rect(0, 0, HUD_W, HUD_H, 0xff7a1a, 28);
 }
@@ -475,6 +481,16 @@ static void player_cards(void) {
   eyebrow(HUD_W / 2 + total / 2, y - 20, "KARMA", C_INK_OK, AL_RIGHT);
 }
 
+static bool danger(void) {
+  if (G.phase != PH_NIGHT) return false;
+  float c = G.clutter;
+  if (!(c > 80 || G.vibe < 20)) return false;
+  int a = fmodf(T, 0.6f) < 0.4f ? 255 : 150;
+  if (c > 80) slot_bar("TOO MUCH CLUTTER!", C_FAULT, "CLEAN UP BEFORE THE FIRE MARSHAL COMES", C_INK_ERR, a, 0);
+  else slot_bar("VIBES ARE DYING!", C_FAULT, "SAY HI TO NEWBIES. CLEAN UP.", C_INK_ERR, a, 0);
+  return true;
+}
+
 /* the first forty seconds of every night: a coach walks you through it */
 static void coach(void) {
   if (G.phase != PH_NIGHT || G.t > 40) return;
@@ -491,14 +507,7 @@ static void coach(void) {
   int a = local < 0.3f ? (int)(local / 0.3f * 255) : 255;
   bool karma = k >= 3;
   if (G.ticker_t > 0) return;   /* one thing at a time up top */
-  int chip = hud_text_w(F_H3, STEP[k][0]) + 28;
-  int w = hud_text_w(F_MONO, STEP[k][1]) + chip + 32;
-  int x = HUD_W / 2 - w / 2, y = 104;
-  hud_rect(x + 5, y + 5, w, 46, C_SHADOW, a);
-  hud_rect(x, y, w, 46, C_CHAR, a);
-  hud_rect(x, y, chip, 46, karma ? C_LIVE : C_HAZARD, a);
-  hud_text(F_H3, x + chip / 2, y + 9, STEP[k][0], C_TAPE, a, AL_CENTER);
-  hud_text(F_MONO, x + chip + 16, y + 11, STEP[k][1], C_BONE, a, AL_LEFT);
+  slot_bar(STEP[k][0], karma ? C_LIVE : C_HAZARD, STEP[k][1], C_BONE, a, 0);
 }
 
 /* ── full screens ────────────────────────────────────────────────── */
@@ -588,19 +597,14 @@ static void title_screen(void) {
 }
 
 static void lobby_overlay(void) {
-  how_to(16, 108, 470);
-  controls_card(16, 414, 400);
-  join_panel(1032, 108, false);
+  how_to(16, 146, 470);
+  controls_card(16, 454, 400);
+  join_panel(1032, 146, false);
   char msg[80];
   int left = (int)ceilf(25 - G.t);
   if (player_count() == 0) snprintf(msg, sizeof msg, "PRESS A OR SPACE TO JOIN");
   else snprintf(msg, sizeof msg, "START OR ENTER: BEGIN (AUTO %d)", left < 0 ? 0 : left);
-  int w = hud_text_w(F_H3, msg) + 40;
-  int cx = (486 + 1032) / 2;
-  hud_rect(cx - w / 2 + 5, 113, w, 44, C_SHADOW, 255);
-  hud_rect(cx - w / 2, 108, w, 44, C_HAZARD, 255);
-  hud_text(F_H3, cx, 114, msg, C_TAPE, 255, AL_CENTER);
-  label(cx, 162, "WALK AROUND. TRY THINGS. NOTHING COUNTS UNTIL 7 PM.", C_ASH, C_CHAR, F_MONO_S);
+  slot_bar(msg, C_HAZARD, player_count() ? "WALK AROUND. TRY THINGS. NOTHING COUNTS YET." : NULL, C_BONE, 255, 0);
 }
 
 static void results_screen(void) {
@@ -716,8 +720,7 @@ void draw_hud(float dt) {
   top_bar();
   if (G.phase == PH_LOBBY) lobby_overlay();
   else join_strip(950, 14);
-  ticker_band();
-  coach();
+  if (!danger()) { ticker_band(); if (G.ticker_t <= 0) coach(); }
   player_cards();
   toasts(16, HUD_H - 100);
 }
