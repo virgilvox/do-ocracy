@@ -157,7 +157,7 @@ static void station_labels(void) {
     station_t *s = &S[i];
     if (i == ST_COUCH || i == ST_TABLE) continue;
     int sx, sy;
-    float top = i == ST_FRIDGE ? 2.4f : i == ST_LUMBER ? 2.1f : (i >= ST_PRINT1 && i <= ST_PRINT3) ? 2.0f : 1.3f;
+    float top = i == ST_FRIDGE ? 2.4f : i == ST_LUMBER ? 2.1f : (i >= ST_PRINT1 && i <= ST_PRINT2) ? 2.0f : 1.3f;
     if (!project(s->x, top, s->z, &sx, &sy)) continue;
     char st[40] = "";
     uint32_t c = C_ASH;
@@ -165,7 +165,7 @@ static void station_labels(void) {
       if (s->state == S_BROKEN) { snprintf(st, sizeof st, "DUSTY. CLEAN ME"); c = C_INK_ERR; }
       else if (s->state == S_LOADED || s->state == S_BUSY) { snprintf(st, sizeof st, "LOADED"); c = C_HAZARD; }
       else snprintf(st, sizeof st, "NEEDS PLYWOOD  DUST %d%%", (int)s->dust);
-    } else if (i >= ST_PRINT1 && i <= ST_PRINT3) {
+    } else if (i >= ST_PRINT1 && i <= ST_PRINT2) {
       if (s->state == S_BROKEN) { snprintf(st, sizeof st, "CLOGGED"); c = C_INK_ERR; }
       else if (s->state == S_BUSY) snprintf(st, sizeof st, "PRINTING %ds", (int)ceilf(s->timer));
       else if (s->state == S_DONE) { snprintf(st, sizeof st, "READY"); c = C_HAZARD; }

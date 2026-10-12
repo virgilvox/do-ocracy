@@ -29,9 +29,8 @@ float frnd(void) { return (rnd() & 0xffffff) / 16777216.f; }
 static const struct { const char *label; float x, z, hw, hd; } LAYOUT[ST_COUNT] = {
   [ST_LUMBER]   = { "LUMBER", -10.9f, -1.6f, 0.65f, 1.35f },
   [ST_LASER]    = { "PEWPEW 9000", -5.0f, -5.7f, 1.35f, 0.8f },
-  [ST_PRINT1]   = { "BOBROSS", -0.3f, -6.1f, 0.6f, 0.5f },
-  [ST_PRINT2]   = { "CHOOCHER", 1.85f, -6.1f, 0.6f, 0.5f },
-  [ST_PRINT3]   = { "TA'CHALA", 4.0f, -6.1f, 0.6f, 0.5f },
+  [ST_PRINT1]   = { "LOAFER", 0.3f, -6.1f, 0.6f, 0.5f },
+  [ST_PRINT2]   = { "DR. STRANGE", 3.2f, -6.1f, 0.6f, 0.5f },
   [ST_CUTSALOT] = { "SIR CUTSALOT", 6.5f, -6.3f, 0.8f, 0.4f },
   [ST_BENCH]    = { "ELECTRONICS", 9.6f, -5.9f, 1.9f, 0.7f },
   [ST_SINK]     = { "SINK", -11.0f, 2.6f, 0.6f, 0.8f },
@@ -292,7 +291,7 @@ static cand_t find_target(player_t *p) {
         if (s->state == S_LOADED) consider(&c, W_CUT, i, d, "CUT", false);
         else if (s->state == S_BROKEN) consider(&c, W_CLEAN_LASER, i, d, "CLEAN THE LASER", true);
         break;
-      case ST_PRINT1: case ST_PRINT2: case ST_PRINT3:
+      case ST_PRINT1: case ST_PRINT2:
         if (s->state == S_IDLE) consider(&c, W_PRINT, i, d, "START A PRINT", false);
         else if (s->state == S_DONE) consider(&c, W_TAKE, i, d, "TAKE THE PRINT", false);
         else if (s->state == S_BROKEN) consider(&c, W_FIX, i, d, "UNCLOG IT", true);
@@ -521,7 +520,7 @@ static void choose_goal(player_t *p) {
   if (L->state == S_LOADED) WANT(W_CUT, ST_LASER, 2.2f, true, L->x, L->z);
   else if (L->state == S_IDLE) WANT(W_LUMBER, ST_LUMBER, 1.6f, true, S[ST_LUMBER].x, S[ST_LUMBER].z);
   else if (L->state == S_BROKEN) WANT(W_CLEAN_LASER, ST_LASER, 1.4f, false, L->x, L->z);
-  for (int k = ST_PRINT1; k <= ST_PRINT3; k++) {
+  for (int k = ST_PRINT1; k <= ST_PRINT2; k++) {
     station_t *s = &S[k];
     if (s->state == S_IDLE) WANT(W_PRINT, k, 0.9f, true, s->x, s->z);
     else if (s->state == S_DONE) WANT(W_TAKE, k, 1.8f, true, s->x, s->z);
@@ -758,7 +757,7 @@ static void npc_update(npc_t *n, float dt) {
 
 /* ── events ──────────────────────────────────────────────────────── */
 
-enum { E_NONE, E_HEAT, E_HABOOB, E_TACOS, E_LANDLORD, E_DAISY, E_DONATION, E_TACHALA, E_FRIDGE, E_SPAGHETTI, E_COFFEE };
+enum { E_NONE, E_HEAT, E_HABOOB, E_TACOS, E_LANDLORD, E_DAISY, E_DONATION, E_STRANGE, E_FRIDGE, E_SPAGHETTI, E_COFFEE };
 static const struct { const char *text; int effect; int weight; } EVENTS[] = {
   { "LINUX NIGHT: CANCELED.", E_NONE, 1 },
   { "QUIET NIGHT. NOTHING HAPPENS. ENJOY IT.", E_NONE, 1 },
@@ -769,7 +768,7 @@ static const struct { const char *text; int effect; int weight; } EVENTS[] = {
   { "LANDLORD WALKTHROUGH IN 10 SECONDS.", E_LANDLORD, 3 },
   { "POWER STRIP DAISY CHAIN DETECTED.", E_DAISY, 3 },
   { "DONATION AT THE FRONT DOOR.", E_DONATION, 3 },
-  { "ANY PARTICULAR REASON WHY TA'CHALA IS DOWN?", E_TACHALA, 2 },
+  { "ANY PARTICULAR REASON WHY DR. STRANGE IS DOWN?", E_STRANGE, 2 },
   { "MYSTERY FOOD IN THE FRIDGE.", E_FRIDGE, 3 },
   { "PRINT LEFT RUNNING. SPAGHETTI.", E_SPAGHETTI, 2 },
   { "COFFEE AND COWORKING RAN LONG. GOOD VIBES.", E_COFFEE, 2 },
@@ -820,13 +819,13 @@ static void fire_event(void) {
     case E_LANDLORD: G.landlord = 10; break;
     case E_DAISY: floor_spot(&x, &z); spawn_item(IT_DAISY, x, z, 0, 0); break;
     case E_DONATION: spawn_donation(); spawn_donation(); break;
-    case E_TACHALA:
-      S[ST_PRINT3].state = S_BROKEN;
-      spawn_item(IT_SPAGHETTI, S[ST_PRINT3].x, S[ST_PRINT3].z + 1.0f, 0, 0);
+    case E_STRANGE:
+      S[ST_PRINT2].state = S_BROKEN;
+      spawn_item(IT_SPAGHETTI, S[ST_PRINT2].x, S[ST_PRINT2].z + 1.0f, 0, 0);
       break;
     case E_FRIDGE: S[ST_FRIDGE].smell = true; break;
     case E_SPAGHETTI: {
-      int k = ST_PRINT1 + (int)(rnd() % 3);
+      int k = ST_PRINT1 + (int)(rnd() % 2);
       spawn_item(IT_SPAGHETTI, S[k].x + (frnd() - 0.5f), S[k].z + 1.0f, 0, 0);
       break;
     }
@@ -912,7 +911,7 @@ void game_update(float dt) {
   for (int i = 0; i < MAX_NPCS; i++) if (N[i].alive) npc_update(&N[i], dt);
 
   /* stations tick */
-  for (int k = ST_PRINT1; k <= ST_PRINT3; k++) {
+  for (int k = ST_PRINT1; k <= ST_PRINT2; k++) {
     station_t *s = &S[k];
     if (s->state != S_BUSY) continue;
     s->timer -= dt;
@@ -965,7 +964,7 @@ void game_update(float dt) {
   c += S[ST_SINK].count * 2.5f;
   if (S[ST_FRIDGE].smell) c += 12;
   if (S[ST_LASER].state == S_BROKEN) c += 6;
-  for (int k = ST_PRINT1; k <= ST_PRINT3; k++) if (S[k].state == S_BROKEN) c += 4;
+  for (int k = ST_PRINT1; k <= ST_PRINT2; k++) if (S[k].state == S_BROKEN) c += 4;
   G.clutter += (c - G.clutter) * fminf(1, dt * 3);
   if (G.clutter > 60) G.vibe -= dt * (G.clutter - 60) / 40.f * 2.0f;
   else if (G.clutter < 25) G.vibe = fminf(100, G.vibe + dt * 0.15f);

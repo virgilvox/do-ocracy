@@ -160,9 +160,9 @@ static void build_stations(void) {
   s->beam->base.visible = false;
   s->light = BOX(g, mat(0x5fb892, 0.4f, 0), 0.14f, 0.14f, 0.05f, 1.1f, 0.8f, 0.81f);
 
-  /* the three printers, each adopted and named */
-  static const uint32_t frames[3] = { 0xc2542c, 0x5e93c4, 0x9b7fd0 };
-  for (int k = 0; k < 3; k++) {
+  /* the two 3D printers, each adopted and named: Loafer and Dr. Strange */
+  static const uint32_t frames[2] = { 0xc2542c, 0x9b7fd0 };
+  for (int k = 0; k < 2; k++) {
     s = &S[ST_PRINT1 + k]; g = s->obj = group_at(&SC->base, s->x, s->z);
     BOX(g, m_slab, 1.2f, 0.7f, 1.0f, 0, 0.35f, 0);
     t3_material *fm = mat(frames[k], 0.6f, 0.2f);
@@ -416,7 +416,7 @@ void world_sync(float dt) {
   if (L->state == S_BUSY) t3_object_set_position(L->beam, sinf(t * 7) * 0.9f, 1.2f, cosf(t * 5) * 0.5f);
   glow(L->light, L->state == S_BROKEN ? C_FAULT : L->state == S_DONE ? C_HAZARD : C_LIVE, L->state == S_BROKEN ? 2.5f * (0.6f + 0.4f * sinf(t * 10)) : 1.5f);
   /* printers */
-  for (int k = 0; k < 3; k++) {
+  for (int k = 0; k < 2; k++) {
     station_t *s = &S[ST_PRINT1 + k];
     s->growth->base.visible = s->state == S_BUSY || s->state == S_DONE;
     float g = s->state == S_DONE ? 1.f : 1.f - s->timer / 14.f;

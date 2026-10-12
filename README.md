@@ -12,7 +12,7 @@ It is 7 PM on a Tuesday. The doors are open, the laser is calling, and the sink 
 
 Everybody scores two things:
 
-- **CLOUT** is for you. Cut something on PEWPEW 9000, run a print on BobRoss, Choocher or Ta'chala, solder something at the bench, cut a sticker on Sir Cutsalot (always free). Carry it to Show & Tell.
+- **CLOUT** is for you. Cut something on PEWPEW 9000, run a print on Loafer or Dr. Strange, solder something at the bench, cut a sticker on Sir Cutsalot (always free). Carry it to Show & Tell.
 - **KARMA** is for the space. Wash the dishes. Haul scrap, empty Club-Mate bottles and print spaghetti to the trash. Move donations (a very heavy CRT, three broken printers, a chest freezer that runs fine) to the Free Pile. Unclog the printers. Clean the laser when it is covered in dust. Unplug the daisy-chained power strips. Say hi to the newbies.
 
 The space has two meters:
@@ -24,7 +24,7 @@ Survive until 11 PM and the space lives to see another Tuesday. Then the scorebo
 
 If the space closes, every point of clout is void. Karma stands. That is the whole design: the commons dilemma with a laser cutter. Glamour work is fun and pays you. Janitorial work is boring and pays the room. The laser leaves scrap. The prints jam. Club-Mate makes you fast and then you litter. Every newbie you greet becomes a member who quietly cleans up after everyone, for a while, until they drift away (the four year sine wave).
 
-The night throws events at you: IT IS 118 OUTSIDE, HABOOB, SOMEBODY BROUGHT TACOS, LANDLORD WALKTHROUGH, ANY PARTICULAR REASON WHY TA'CHALA IS DOWN?, and the occasional LINUX NIGHT: CANCELED, which does nothing. X makes a proposal ("I think we should... form a committee"). It earns zero clout and says so.
+The night throws events at you: IT IS 118 OUTSIDE, HABOOB, SOMEBODY BROUGHT TACOS, LANDLORD WALKTHROUGH, ANY PARTICULAR REASON WHY DR. STRANGE IS DOWN?, and the occasional LINUX NIGHT: CANCELED, which does nothing. X makes a proposal ("I think we should... form a committee"). It earns zero clout and says so.
 
 When nobody is playing, the cabinet runs an attract mode. Three archetypes play a night on their own: BUILDER (mostly karma), TALKER (proposals and the laser) and FOUNDER (all glamour). If you play alone, BUILDER and TALKER clock in with you, so there is a commons to ruin.
 
