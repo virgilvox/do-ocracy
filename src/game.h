@@ -82,8 +82,16 @@ typedef struct {
   float lobby_t, ready_t;            /* lobby auto start (25 down) and the ready countdown (0 up to 3) */
   float hold_b[MAX_PLAYERS];         /* by slot: the hold-B leave ring, 0..1 */
   bool tape_held;       /* the lobby tape holds still */
+  float pause_t;        /* seconds the pause overlay has been up */
+  int rec_karma, rec_clout;   /* results: the slot that beat the lab's karma or clout record, or -1 */
+  bool rec_team;        /* results: the co-op team beat the lab's best */
 } menu_t;
 extern menu_t M;       /* defined in game.c beside G, driven by main.c, drawn by draw.c */
+
+/* the SETTINGS rows, in SETTING_ROWS order */
+enum { SET_ROW_NIGHT, SET_ROW_BOTS, SET_ROW_CHAOS, SET_ROW_PHONES, SET_ROW_MUSIC, SET_ROW_SFX,
+       SET_ROW_ROOM, SET_ROW_HELP, SET_ROW_RESET, SET_ROW_DONE, SET_ROW_COUNT };
+bool settings_pinned(int row);   /* main.c: the mode decides this row */
 
 enum {
   IT_NONE,

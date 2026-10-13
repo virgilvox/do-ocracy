@@ -250,6 +250,47 @@ static const char *const DANGER_LINES[2][2] = {
   { "VIBES!",   "SAY HI. CLEAN UP." },
 };
 
+static const char *const SETTING_ROWS[] = { "NIGHT LENGTH", "BOTS", "CHAOS", "PHONES", "MUSIC", "SFX", "ROOM", "HELP", "RESET TO DEFAULTS", "DONE" };
+static const char *const PAUSE_ROWS[] = { "RESUME", "HOW TO PLAY", "QUIT TO MENU" };
+
+/* the settings screen's right panel: one line per row (FINAL-frontend.md 6.5) */
+static const char *const SETTINGS_HELP[] = {
+  "HOW LONG UNTIL 11 PM. THE DISHES DO NOT CARE.",
+  "MEMBERS FILL EMPTY SEATS. ONE OF THEM TALKS.",
+  "HOW OFTEN THINGS GO WRONG. CALM IS SUSPICIOUS.",
+  "SCAN THE CODE TO JOIN. NO APP. NO ACCOUNT.",
+  "THE BAND PLAYS LIVE. IT CANNOT BE FIRED.",
+  "BEEPS. THE GOOD KIND.",
+  "108 W MAIN. THE ONLY ROOM. FOR NOW.",
+  "THE RULES FLASH AND THE COACH. FIRST NIGHT IS THE DEFAULT.",
+  "BACK TO HOW IT WAS. LIKE THE WOOD SHOP.",
+  "BACK TO THE MENU.",            /* DONE with TO_MAIN */
+};
+static const char *const SETTINGS_HELP_DONE_LOBBY = "OFF TO THE LOBBY.";
+
+/* results: the head, eyebrow and sub per ending, picked once by end_night (6.11) */
+typedef struct { const char *eyebrow, *head, *sub; } end_variant_t;
+static const end_variant_t END_FIRE_V[3] = {
+  { "HYH IS CANCELED", "THE FIRE MARSHAL HAD OPINIONS.", "ALL CLOUT IS VOID. THEY COUNTED THE POWER STRIPS." },
+  { "CLUTTER: 100",    "THE FREE PILE WON.",             "IT WAS ALWAYS GOING TO. ALL CLOUT IS VOID." },
+  { "EGRESS: BLOCKED", "NOBODY COULD REACH THE DOOR.",   "ALL CLOUT IS VOID. THE DOOR IS BEHIND A CRT." },
+};
+static const end_variant_t END_BURN_V[3] = {
+  { "VIBE: 0", "THE SAME THREE PEOPLE DID EVERYTHING.", "THEN THEY LEFT. THE KNOWLEDGE LEFT WITH THEM." },
+  { "VIBE: 0", "EVERYONE WENT HOME TO THEIR GARAGE.",   "ALL CLOUT IS VOID. THE SINE WAVE WAITS TWO YEARS." },
+  { "VIBE: 0", "THE MAILING LIST WON.",                 "200 MESSAGES. NOBODY CAME IN. ALL CLOUT IS VOID." },
+};
+static const end_variant_t END_OK_V[2] = {
+  { "11:00 PM. LIGHTS OUT.", "THE SPACE SURVIVES ANOTHER TUESDAY.", "CLOUT COUNTS. BUT YOU KNOW WHO DID THE DISHES." },
+  { "RENT IS PAID. BARELY.", "THE LAB OPENS TOMORROW.",             "BECAUSE SOMEBODY SWEPT. SEE YOU THURSDAY." },
+};
+
+static const char *const COOP_TIER[4] = { "CLOSED", "BARELY", "OPEN TOMORROW", "SPOTLESS" };
+static const char *const COOP_LETTER[4] = { "C", "B", "A", "S" };
+static const uint32_t COOP_COLOR[4] = { C_FAULT, C_RUST, C_HAZARD, C_LIVE };
+static const char *const COOP_BANNER = "THE REAL WINNER: EVERYONE WHO SWEPT.";
+static const char *const VERSUS_LOST_BANNER = "NOBODY WINS. THE FLOOR IS STILL DIRTY.";
+
 static const int END_VARIANT_COUNT[4] = { 0, 2, 3, 3 };
 
 #endif

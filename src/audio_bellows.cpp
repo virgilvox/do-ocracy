@@ -251,6 +251,7 @@ class Band {
   }
 
   bool Ready() const { return ready_; }
+  void SetLevels(float music, float sfx) { music_gain_ = music; sfx_gain_ = sfx; }
 
   void SetGenre(Genre g) {
     genre_ = g;
@@ -572,12 +573,12 @@ class Band {
    * native loudness, so these are not the reference rack's numbers */
   void RenderSpan(float* l, float* r, int from, int n) {
     for (int i = 0; i < n; ++i) { rl_[i] = rr_[i] = yl_[i] = yr_[i] = 0.0f; }
-    const float m = mode_ <= 0 ? 0.0f : 1.0f;
-    Mix(kick_, 0.9f, 0.0f, 0.0f, 0.0f, l, r, from, n);
-    Mix(snare_, 2.2f, 0.7f, 0.0f, 0.0f, l, r, from, n);
-    Mix(clap_, 1.0f * m, 0.9f, 0.0f, -0.16f, l, r, from, n);
-    Mix(hat_, 8.0f, 0.0f, 0.0f, 0.18f, l, r, from, n);
-    Mix(ohat_, 3.2f, 0.4f, 0.0f, -0.12f, l, r, from, n);
+    const float g = music_gain_, m = (mode_ <= 0 ? 0.0f : 1.0f) * g;
+    Mix(kick_, 0.9f * g, 0.0f, 0.0f, 0.0f, l, r, from, n);
+    Mix(snare_, 2.2f * g, 0.7f * g, 0.0f, 0.0f, l, r, from, n);
+    Mix(clap_, 1.0f * m, 0.9f * g, 0.0f, -0.16f, l, r, from, n);
+    Mix(hat_, 8.0f * g, 0.0f, 0.0f, 0.18f, l, r, from, n);
+    Mix(ohat_, 3.2f * g, 0.4f * g, 0.0f, -0.12f, l, r, from, n);
     /* the acid line through its saturator, with a little echo */
     for (int i = 0; i < n; ++i) { bl_[i] = 0.0f; br_[i] = 0.0f; }
     acid_.Process(bl_, br_, 0, n);
@@ -602,9 +603,10 @@ class Band {
     }
     Mix(counter_, 0.06f * m, 0.25f * m, 0.0f, 0.24f, l, r, from, n);
     /* effects sit above the music */
-    Mix(bells_, 0.13f, 0.12f, 0.06f, 0.0f, l, r, from, n);
-    Mix(sfx_pluck_, 1.1f, 0.5f, 0.0f, 0.0f, l, r, from, n);
-    Mix(buzz_, 0.22f, 0.0f, 0.0f, 0.0f, l, r, from, n);
+    const float e = sfx_gain_;
+    Mix(bells_, 0.13f * e, 0.12f * e, 0.06f * e, 0.0f, l, r, from, n);
+    Mix(sfx_pluck_, 1.1f * e, 0.5f * e, 0.0f, 0.0f, l, r, from, n);
+    Mix(buzz_, 0.22f * e, 0.0f, 0.0f, 0.0f, l, r, from, n);
     plate_.Process(rl_, rr_, 0, n);
     delay_.Process(yl_, yr_, 0, n);
     for (int i = 0; i < n; ++i) {
@@ -649,6 +651,7 @@ class Band {
   float pad_center_ = 62.0f;
   float sr_ = 48000.0f;
   Genre genre_ = G_AMBIENT;
+  float music_gain_ = 1.0f, sfx_gain_ = 1.0f;   /* the MUSIC and SFX settings, 0..1 */
   int mode_ = -1, pending_mode_ = -1, samples_per_step_ = 1, countdown_ = 0;
   int step_ = 0, bar_ = 0, section_ = 0, pass_ = 0, acid_gate_ = 0, lead_off_ = 0, last_chord_ = -1;
   int note_id_ = 0;
@@ -658,6 +661,7 @@ class Band {
 
 Band band;
 int pending_mode = 1;
+float music_level = 1.0f, sfx_level = 1.0f;
 int pending_sfx[16];
 int npending;
 float L[4096], R[4096];
@@ -670,6 +674,11 @@ extern "C" void audio_play(int sfx) {
   else if (npending < 16) pending_sfx[npending++] = sfx;
 }
 
+extern "C" void audio_set_levels(float music, float sfx) {
+  music_level = music; sfx_level = sfx;
+  band.SetLevels(music, sfx);
+}
+
 extern "C" void audio_music(int mode) {
   pending_mode = mode;
   if (band.Ready()) band.SetMode(mode);
@@ -679,6 +688,7 @@ extern "C" void audio_render(float* ring, uint32_t cap, uint32_t* cursor, uint32
   if (!band.Ready()) {
     band.Init(static_cast<float>(rate ? rate : 48000));
     band.SetMode(pending_mode);
+    band.SetLevels(music_level, sfx_level);
     for (int i = 0; i < npending; ++i) band.Sfx(pending_sfx[i]);
     npending = 0;
   }

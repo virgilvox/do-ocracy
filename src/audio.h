@@ -12,6 +12,8 @@ enum {
 void audio_play(int sfx);
 /* music: 0 off, 1 lobby, 2 night, 3 closing time (faster) */
 void audio_music(int mode);
+/* the MUSIC and SFX settings as gains, 0..1 (1 is the measured mix) */
+void audio_set_levels(float music, float sfx);
 /* fill the cart's stereo f32 ring with dt worth of samples */
 void audio_render(float *ring, uint32_t cap, uint32_t *cursor, uint32_t rate, double dt_ms);
 
