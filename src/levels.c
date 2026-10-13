@@ -123,7 +123,7 @@ level_t LEVELS[LEVEL_COUNT] = {
     /* 3.5 signs: kind, text, x, y, z, ry, w, h. All basic+map, unlit. */
     .signs = {
       { SG_LOCKUP,   NULL,               4.4f,   2.95f, -6.98f, 0,     6.4f, 1.6f },   /* the mark via hud_logo, above the shop */
-      { SG_FACADE,   NULL,               0.0f,   3.0f,   7.28f, 0,     4.0f, 1.0f },   /* the one new mark placement */
+      { SG_FACADE,   NULL,               0.0f,   3.0f,   7.46f, 0,     4.0f, 1.0f },   /* the one new mark placement, on the header beam's street face */
       { SG_TILE,     "LASER CUTTER",    -3.4f,   2.05f, -6.98f, 0,     0.9f, 0.45f },
       { SG_TILE,     "WOOD TOOLS",       3.6f,   2.05f, -6.98f, 0,     0.9f, 0.45f },
       { SG_TILE,     "3D PRINTER",       7.8f,   1.45f, -3.55f, 0,     0.9f, 0.45f },  /* on the counter back board */

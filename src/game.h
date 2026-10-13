@@ -285,6 +285,7 @@ const char *item_name(const item_t *it);
 
 /* world.c: the 3D side */
 void world_init(t3_scene *scene);
+void world_set_level(const level_t *nl);   /* rebuild the room for the active level; game_reset_world first */
 void world_sync(float dt);
 t3_object *world_item_obj(int type, int kind);
 t3_object *world_person(uint32_t color, bool newbie, t3_mesh **body);

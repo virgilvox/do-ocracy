@@ -871,7 +871,7 @@ static void spawn_newbie(void) {
       if (clear_spot(n->tx, n->tz, 0.8f)) break;
     }
     n->patience = L->night.patience;
-    n->obj = world_person(0x8b8578, true, &n->body);
+    n->obj = world_person(0x6f685c, true, &n->body);
     game_toast("A NEWBIE WALKED IN. SOMEBODY SAY HI.", C_BONE);
     return;
   }
