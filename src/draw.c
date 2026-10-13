@@ -68,27 +68,8 @@ static void label_av(int x, int y, const char *s, uint32_t fg, uint32_t bg, int 
   hud_text(font, x, y, s, fg, 255, AL_CENTER);
 }
 
-/* a GANTRY eyebrow: tracked mono caps */
-static void eyebrow(int x, int y, const char *s, uint32_t c, int align) {
-  char buf[160];
-  int n = 0;
-  for (const char *p = s; *p && n < 150; p++) { buf[n++] = *p; if (p[1]) buf[n++] = ' '; }
-  buf[n] = 0;
-  hud_text(F_MONO_S, x, y, buf, c, 255, align);
-}
-
 /* what a player presses, named for their own input */
 static const char *glyph_a(const player_t *p) { return p->kb == 0 ? "SPACE" : p->kb == 1 ? "." : "A"; }
-
-/* a key cap: the button name in a box, sized to fit */
-static int keycap(int x, int y, const char *k, uint32_t fill, uint32_t ink) {
-  int w = hud_text_w(F_MONO_S, k) + 14;
-  if (w < 24) w = 24;
-  hud_rect(x + 2, y + 2, w, 24, C_SHADOW, 255);
-  hud_rect(x, y, w, 24, fill, 255);
-  hud_text(F_MONO_S, x + w / 2, y + 3, k, ink, 255, AL_CENTER);
-  return w;
-}
 
 /* the wall clock: the level says when the night starts and how many hours it spans */
 static void clock_str(char *out, int n) {
@@ -378,7 +359,7 @@ static void players_overlay(void) {
         hud_rect(bx, by + 26, (int)(tot * done), 6, c, 255);
       }
       hud_frame(bx, by, tot, 32, 2, c, 255);
-      keycap(bx + 6, by + 3, g, done > 0 ? C_BONE : c, C_TAPE);
+      hud_keycap(bx + 6, by + 3, g, done > 0 ? C_BONE : c, C_TAPE);
       hud_text(F_MONO, bx + gw + 16, by + 3, p->prompt, done > 0 ? C_BONE : karma ? C_INK_OK : C_HAZARD, 255, AL_LEFT);
     }
     if (p->flash > 0) {
@@ -409,18 +390,18 @@ static void join_panel(int x, int y, bool big) {
   if (net_online()) {
     hud_qr(x + 12, y + 12, q, G.join_url);
     if (big) {
-      eyebrow(x + 12, y + q + 22, "SCAN TO JOIN", C_ASH, AL_LEFT);
+      hud_eyebrow(x + 12, y + q + 22, "SCAN TO JOIN", C_ASH, AL_LEFT);
       hud_text(F_H1, x + 10, y + q + 38, G.room, C_HAZARD, 255, AL_LEFT);
       hud_text(F_MONO_S, x + w - 12, y + q + 64, "NO APP", C_ASH, 255, AL_RIGHT);
       hud_text(F_MONO_S, x + w - 12, y + q + 84, "NO ACCOUNT", C_ASH, 255, AL_RIGHT);
     } else {
-      eyebrow(x + q + 20, y + 14, "JOIN", C_ASH, AL_LEFT);
+      hud_eyebrow(x + q + 20, y + 14, "JOIN", C_ASH, AL_LEFT);
       hud_text(F_H3, x + q + 18, y + 34, G.room, C_HAZARD, 255, AL_LEFT);
       hud_text(F_MONO_S, x + q + 20, y + 76, "SCAN IT", C_ASH, 255, AL_LEFT);
       hud_text(F_MONO_S, x + q + 20, y + 96, "ANY PHONE", C_ASH, 255, AL_LEFT);
     }
   } else {
-    eyebrow(x + 14, y + 16, "PHONES OFFLINE", C_ASH, AL_LEFT);
+    hud_eyebrow(x + 14, y + 16, "PHONES OFFLINE", C_ASH, AL_LEFT);
     hud_text_wrap(F_MONO, x + 14, y + 44, w - 28, "GRAB A CONTROLLER.", C_BONE, 255, 26);
   }
 }
@@ -429,11 +410,11 @@ static void join_strip(int x, int y) {
   hud_panel(x, y, 320, 56, C_SLAB, C_STEEL_HI);
   if (net_online()) {
     hud_qr(x + 5, y + 4, 48, G.join_url);
-    eyebrow(x + 62, y + 8, "PHONES JOIN", C_ASH, AL_LEFT);
+    hud_eyebrow(x + 62, y + 8, "PHONES JOIN", C_ASH, AL_LEFT);
     hud_text(F_H3, x + 60, y + 24, G.room, C_HAZARD, 255, AL_LEFT);
     hud_text(F_MONO_S, x + 308, y + 32, "ANY TIME", C_SMOKE, 255, AL_RIGHT);
   } else {
-    eyebrow(x + 14, y + 10, "PHONES OFFLINE", C_ASH, AL_LEFT);
+    hud_eyebrow(x + 14, y + 10, "PHONES OFFLINE", C_ASH, AL_LEFT);
     hud_text(F_MONO_S, x + 14, y + 32, "GRAB A CONTROLLER.", C_BONE, 255, AL_LEFT);
   }
 }
@@ -482,7 +463,7 @@ static void ticker_band(void) {
 }
 
 static void meter(int x, int y, int w, const char *name, const char *rule, float v, uint32_t fill, const char *right) {
-  eyebrow(x, y, name, C_BONE, AL_LEFT);
+  hud_eyebrow(x, y, name, C_BONE, AL_LEFT);
   hud_text(F_MONO_S, x + hud_text_w(F_MONO_S, name) * 2 + 10, y, rule, C_SMOKE, 255, AL_LEFT);
   hud_text(F_MONO_S, x + w, y, right, C_ASH, 255, AL_RIGHT);
   hud_bar(x, y + 20, w, 16, v / 100.f, fill, C_CHAR);
@@ -545,8 +526,8 @@ static void player_cards(void) {
     hud_text(F_MONO_L, x + cw - 10, y + 16, b, C_INK_OK, 255, AL_RIGHT);
     x += cw + gap;
   }
-  eyebrow(HUD_W / 2 - total / 2, y - 20, "CLOUT", C_HAZARD, AL_LEFT);
-  eyebrow(HUD_W / 2 + total / 2, y - 20, "KARMA", C_INK_OK, AL_RIGHT);
+  hud_eyebrow(HUD_W / 2 - total / 2, y - 20, "CLOUT", C_HAZARD, AL_LEFT);
+  hud_eyebrow(HUD_W / 2 + total / 2, y - 20, "KARMA", C_INK_OK, AL_RIGHT);
 }
 
 static bool danger(void) {
@@ -602,7 +583,7 @@ static int flow_arrow(int x, int y, uint32_t c) {
 /* the how-to board: two paths, one rule */
 static void how_to(int x, int y, int w) {
   hud_panel(x, y, w, 296, C_SLAB, C_STEEL_HI);
-  eyebrow(x + 16, y + 14, "HOW TUESDAY WORKS", C_ASH, AL_LEFT);
+  hud_eyebrow(x + 16, y + 14, "HOW TUESDAY WORKS", C_ASH, AL_LEFT);
   int cy = y + 40;
   hud_rect(x + 16, cy, 8, 64, C_HAZARD, 255);
   hud_text(F_H3, x + 34, cy - 2, "CLOUT", C_HAZARD, 255, AL_LEFT);
@@ -628,7 +609,7 @@ static void how_to(int x, int y, int w) {
 
 static void controls_card(int x, int y, int w) {
   hud_panel(x, y, w, 150, C_SLAB, C_STEEL_HI);
-  eyebrow(x + 16, y + 14, "BUTTONS", C_ASH, AL_LEFT);
+  hud_eyebrow(x + 16, y + 14, "BUTTONS", C_ASH, AL_LEFT);
   static const char *const ROWS[4][4] = {
     { "PAD", "A", "B", "X" },
     { "WASD", "SPACE", "Q", "R" },
@@ -641,9 +622,9 @@ static void controls_card(int x, int y, int w) {
   for (int r = 0; r < 4; r++) {
     int ry = y + 38 + r * 27;
     hud_text(F_MONO_S, x + 16, ry + 4, ROWS[r][0], C_BONE, 255, AL_LEFT);
-    keycap(x + 120, ry, ROWS[r][1], C_HAZARD, C_TAPE);
-    keycap(x + 210, ry, ROWS[r][2], C_BONE, C_TAPE);
-    keycap(x + 290, ry, ROWS[r][3], C_VIOLET, C_TAPE);
+    hud_keycap(x + 120, ry, ROWS[r][1], C_HAZARD, C_TAPE);
+    hud_keycap(x + 210, ry, ROWS[r][2], C_BONE, C_TAPE);
+    hud_keycap(x + 290, ry, ROWS[r][3], C_VIOLET, C_TAPE);
   }
 }
 
@@ -651,7 +632,7 @@ static void title_screen(void) {
   hud_rect(0, 0, HUD_W, HUD_H, C_CHAR, 150);
   hud_tape(0, 0, HUD_W, 24, T * 30);
   hud_logo(64, 62, 200, C_BONE);
-  eyebrow(290, 70, "HEATSYNC LABS ARCADE", C_ASH, AL_LEFT);
+  hud_eyebrow(290, 70, "HEATSYNC LABS ARCADE", C_ASH, AL_LEFT);
   hud_text(F_TITLE, 282, 96, "DO-OCRACY", C_BONE, 255, AL_LEFT);
   const char *tag = TAGLINES[(int)(T / 3.5f) % COUNT(TAGLINES)];
   hud_text(F_H3, 290, 242, tag, C_HAZARD, 255, AL_LEFT);
@@ -685,7 +666,7 @@ static void results_screen(void) {
   hud_tape(0, 0, HUD_W, 24, T * 20);
   bool ok = G.end == END_SURVIVED;
   const char *head = ok ? "THE SPACE SURVIVES ANOTHER TUESDAY." : G.end == END_FIRE ? "THE FIRE MARSHAL SHUT IT DOWN." : "EVERYONE BURNED OUT.";
-  eyebrow(64, 48, ok ? "11:00 PM. LIGHTS OUT." : "HYH IS CANCELED", ok ? C_INK_OK : C_INK_ERR, AL_LEFT);
+  hud_eyebrow(64, 48, ok ? "11:00 PM. LIGHTS OUT." : "HYH IS CANCELED", ok ? C_INK_OK : C_INK_ERR, AL_LEFT);
   hud_text(hud_text_w(F_H1, head) > 1160 ? F_H2 : F_H1, 60, 70, head, C_BONE, 255, AL_LEFT);
   hud_text(F_MONO, 64, 150, ok ? "CLOUT COUNTS. BUT YOU KNOW WHO DID THE DISHES." : "ALL CLOUT IS VOID. NOBODY CARES ABOUT YOUR LASER MUSTACHE.",
            ok ? C_ASH : C_INK_ERR, 255, AL_LEFT);
@@ -729,10 +710,10 @@ static void results_screen(void) {
   if (n >= 2 && low >= 0 && !aname[low]) { aname[low] = "LURKER"; snprintf(award[low], 64, "%s", AWARD_LURKER); }
 
   int y = 200;
-  eyebrow(130, y, "MEMBER", C_ASH, AL_LEFT);
-  eyebrow(560, y, "CLOUT", C_HAZARD, AL_RIGHT);
-  eyebrow(700, y, "KARMA", C_INK_OK, AL_RIGHT);
-  eyebrow(780, y, "AWARD", C_ASH, AL_LEFT);
+  hud_eyebrow(130, y, "MEMBER", C_ASH, AL_LEFT);
+  hud_eyebrow(560, y, "CLOUT", C_HAZARD, AL_RIGHT);
+  hud_eyebrow(700, y, "KARMA", C_INK_OK, AL_RIGHT);
+  hud_eyebrow(780, y, "AWARD", C_ASH, AL_LEFT);
   y += 26;
   int rows = n > 6 ? 6 : n;
   for (int j = 0; j < rows; j++) {

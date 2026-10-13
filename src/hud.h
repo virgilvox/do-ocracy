@@ -61,4 +61,50 @@ void hud_qr(int x, int y, int size, const char *text);
 /* RGBA image of the mark for a 3D sign (caller frees) */
 uint8_t *hud_logo_image(int size, uint32_t flame_rgb, uint32_t bg_rgb, int bg_a);
 
+/* a coloured run of text; a caption is an array of runs, terminated by s == NULL */
+typedef struct { const char *s; uint32_t c; } run_t;
+
+/* text with a 3 px solid shadow in C_SHADOW at 80 percent of a, then the text */
+int  hud_text_sh(int font, int x, int y, const char *s, uint32_t rgb, int a, int align);
+/* runs drawn left to right; total width measured with hud_text_w for align; shadowed */
+int  hud_text_runs(int font, int x, int y, const run_t *runs, int a, int align);
+
+/* global alpha multiplier applied inside blend(): a = a * mul / 255; default 255 */
+void hud_set_alpha(int mul);
+
+/* clip rect applied inside blend() and the hud_rect fast path; hud_clip_clear resets to the screen */
+void hud_clip(int x, int y, int w, int h);
+void hud_clip_clear(void);
+
+/* a GANTRY eyebrow: tracked mono caps */
+void hud_eyebrow(int x, int y, const char *s, uint32_t c, int align);
+/* a key cap: the button name in a box, sized to fit; returns the width */
+int  hud_keycap(int x, int y, const char *k, uint32_t fill, uint32_t ink);
+
+/* easing: t in 0..1 */
+float hud_ease_out(float t);      /* 1 - (1-t)^3 */
+float hud_ease_inout(float t);    /* t<.5 ? 4t^3 : 1 - (-2t+2)^3 / 2 */
+float hud_ease_back(float t);     /* overshoots to about 1.1 */
+/* exponential tween: cur += (target - cur) * (1 - exp(-speed * dt)); snaps when within 0.5 */
+void  hud_tween(float *cur, float target, float speed, float dt);
+
+/* 16x16 one-bit glyphs drawn at integer scale s (16*s px square) */
+enum { GL_CLOUT, GL_KARMA, GL_PAD, GL_KEYS, GL_PHONE, GL_BOT, GL_MARSHAL, GL_HEART,
+       GL_BROOM, GL_HAND, GL_CHECK, GL_NOTE, GL_SPEAKER, GL_COUNT };
+void hud_glyph(int x, int y, int id, int s, uint32_t rgb, int a);
+
+/* a row of step dots: n dots, 10 px, pitch 22, centred on cx; dot k < step filled C_STEEL_HI,
+   k == step is a 60 px bar filling by frac in C_HAZARD, k > step hollow 2 px C_STEEL */
+void hud_steps(int cx, int y, int n, int step, float frac);
+
+/* pictograms for the rules flash and the mode cards (screen space, px) */
+void hud_pict_person(int x, int y, int h, uint32_t body, bool newbie);
+void hud_pict_station(int x, int y, int w, int h, const char *label, uint32_t edge);
+void hud_pict_item(int x, int y, int kind, uint32_t c);   /* 0 plywood, 1 project, 2 scrap, 3 daisy */
+
+/* screen space particles, separate from the world FX in draw.c */
+enum { FX2_SPARK, FX2_CONFETTI, FX2_RING };
+void fx2_burst(int kind, float x, float y, uint32_t c);
+void fx2_draw(float dt);
+
 #endif

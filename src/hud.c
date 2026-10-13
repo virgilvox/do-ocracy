@@ -10,6 +10,7 @@
 #include "stb_truetype.h"
 #include "qrcodegen.h"
 #include "logo_mesh.h"
+#include "glyphs.h"
 
 uint8_t *hud_px;
 
@@ -43,8 +44,15 @@ static void bake(int id, const uint8_t *ttf, int px) {
   f->ascent = (int)(a * stbtt_ScaleForPixelHeight(&fi, (float)px) + 0.5f);
 }
 
+static uint16_t glyph_rows[GL_COUNT][16];
+
 void hud_init(void) {
   hud_px = calloc(HUD_W * HUD_H, 4);
+  for (int g = 0; g < GL_COUNT; g++) for (int r = 0; r < 16; r++) {
+    uint16_t v = 0;
+    for (int c = 0; c < 16 && GLYPH_SRC[g][r][c]; c++) if (GLYPH_SRC[g][r][c] == '#') v |= (uint16_t)(0x8000u >> c);
+    glyph_rows[g][r] = v;
+  }
   uint8_t *archivo = load_asset("ArchivoBlack-Regular.ttf", NULL);
   uint8_t *plex = load_asset("IBMPlexMono-SemiBold.ttf", NULL);
   uint8_t *plexb = load_asset("IBMPlexMono-Bold.ttf", NULL);
@@ -63,8 +71,24 @@ void hud_init(void) {
 
 void hud_clear(void) { memset(hud_px, 0, HUD_W * HUD_H * 4); }
 
+/* the clip rect (x0, y0 inclusive, x1, y1 exclusive) and the global alpha multiplier */
+static int clip_x0, clip_y0, clip_x1 = HUD_W, clip_y1 = HUD_H;
+static int alpha_mul = 255;
+
+void hud_set_alpha(int mul) { alpha_mul = mul < 0 ? 0 : mul > 255 ? 255 : mul; }
+
+void hud_clip(int x, int y, int w, int h) {
+  clip_x0 = x < 0 ? 0 : x; clip_y0 = y < 0 ? 0 : y;
+  clip_x1 = x + w > HUD_W ? HUD_W : x + w; clip_y1 = y + h > HUD_H ? HUD_H : y + h;
+  if (clip_x1 < clip_x0) clip_x1 = clip_x0;
+  if (clip_y1 < clip_y0) clip_y1 = clip_y0;
+}
+
+void hud_clip_clear(void) { clip_x0 = 0; clip_y0 = 0; clip_x1 = HUD_W; clip_y1 = HUD_H; }
+
 static inline void blend(int x, int y, uint32_t rgb, int a) {
-  if ((unsigned)x >= HUD_W || (unsigned)y >= HUD_H || a <= 0) return;
+  if (x < clip_x0 || x >= clip_x1 || y < clip_y0 || y >= clip_y1 || a <= 0) return;
+  if (alpha_mul < 255) { a = a * alpha_mul / 255; if (a <= 0) return; }
   uint8_t *p = hud_px + ((HUD_H - 1 - y) * HUD_W + x) * 4;
   int sr = (rgb >> 16) & 255, sg = (rgb >> 8) & 255, sb = rgb & 255;
   if (a >= 255 || p[3] == 0) { p[0] = sr; p[1] = sg; p[2] = sb; p[3] = a > 255 ? 255 : a; return; }
@@ -77,10 +101,10 @@ static inline void blend(int x, int y, uint32_t rgb, int a) {
 }
 
 void hud_rect(int x, int y, int w, int h, uint32_t rgb, int a) {
-  int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
-  int x1 = x + w > HUD_W ? HUD_W : x + w, y1 = y + h > HUD_H ? HUD_H : y + h;
+  int x0 = x < clip_x0 ? clip_x0 : x, y0 = y < clip_y0 ? clip_y0 : y;
+  int x1 = x + w > clip_x1 ? clip_x1 : x + w, y1 = y + h > clip_y1 ? clip_y1 : y + h;
   if (x0 >= x1 || y0 >= y1) return;
-  if (a >= 255) {
+  if (a >= 255 && alpha_mul >= 255) {
     uint8_t c[4] = { (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 255 };
     uint32_t v; memcpy(&v, c, 4);
     for (int yy = y0; yy < y1; yy++) {
@@ -344,4 +368,184 @@ void hud_qr(int x, int y, int size, const char *text) {
   hud_rect(x, y, total, total, C_BONE, 255);
   for (int j = 0; j < n; j++) for (int i = 0; i < n; i++)
     if (qrcodegen_getModule(qr_buf, i, j)) hud_rect(x + (i + 2) * m, y + (j + 2) * m, m, m, C_CHAR, 255);
+}
+
+/* ── front end helpers (FINAL-frontend.md section 5) ─────────────── */
+
+int hud_text_sh(int font, int x, int y, const char *s, uint32_t rgb, int a, int align) {
+  hud_text(font, x + 3, y + 3, s, C_SHADOW, a * 4 / 5, align);
+  return hud_text(font, x, y, s, rgb, a, align);
+}
+
+int hud_text_runs(int font, int x, int y, const run_t *runs, int a, int align) {
+  int w = 0;
+  for (const run_t *r = runs; r->s; r++) w += hud_text_w(font, r->s);
+  int cx = align == AL_CENTER ? x - w / 2 : align == AL_RIGHT ? x - w : x;
+  for (const run_t *r = runs; r->s; r++) {
+    hud_text_sh(font, cx, y, r->s, r->c, a, AL_LEFT);
+    cx += hud_text_w(font, r->s);
+  }
+  return w;
+}
+
+void hud_eyebrow(int x, int y, const char *s, uint32_t c, int align) {
+  char buf[160];
+  int n = 0;
+  for (const char *p = s; *p && n < 150; p++) { buf[n++] = *p; if (p[1]) buf[n++] = ' '; }
+  buf[n] = 0;
+  hud_text(F_MONO_S, x, y, buf, c, 255, align);
+}
+
+int hud_keycap(int x, int y, const char *k, uint32_t fill, uint32_t ink) {
+  int w = hud_text_w(F_MONO_S, k) + 14;
+  if (w < 24) w = 24;
+  hud_rect(x + 2, y + 2, w, 24, C_SHADOW, 255);
+  hud_rect(x, y, w, 24, fill, 255);
+  hud_text(F_MONO_S, x + w / 2, y + 3, k, ink, 255, AL_CENTER);
+  return w;
+}
+
+static float clamp01(float t) { return t < 0 ? 0 : t > 1 ? 1 : t; }
+
+float hud_ease_out(float t) { t = clamp01(t); float u = 1 - t; return 1 - u * u * u; }
+
+float hud_ease_inout(float t) {
+  t = clamp01(t);
+  if (t < 0.5f) return 4 * t * t * t;
+  float u = -2 * t + 2;
+  return 1 - u * u * u / 2;
+}
+
+float hud_ease_back(float t) {
+  t = clamp01(t);
+  float u = t - 1;
+  return 1 + 2.70158f * u * u * u + 1.70158f * u * u;
+}
+
+void hud_tween(float *cur, float target, float speed, float dt) {
+  *cur += (target - *cur) * (1 - expf(-speed * dt));
+  if (fabsf(target - *cur) < 0.5f) *cur = target;
+}
+
+void hud_glyph(int x, int y, int id, int s, uint32_t rgb, int a) {
+  if (id < 0 || id >= GL_COUNT) return;
+  if (s < 1) s = 1;
+  for (int r = 0; r < 16; r++) {
+    uint16_t v = glyph_rows[id][r];
+    if (!v) continue;
+    for (int c = 0; c < 16; c++) {
+      if (!(v & (0x8000u >> c))) continue;
+      if (s == 1) blend(x + c, y + r, rgb, a);
+      else hud_rect(x + c * s, y + r * s, s, s, rgb, a);
+    }
+  }
+}
+
+void hud_steps(int cx, int y, int n, int step, float frac) {
+  if (n <= 0) return;
+  const int dot = 10, gap = 12, bar = 60;
+  int cur = step >= 0 && step < n;
+  int w = n * dot + (n - 1) * gap + (cur ? bar - dot : 0);
+  int x = cx - w / 2;
+  for (int k = 0; k < n; k++) {
+    if (k < step) hud_rect(x, y, dot, dot, C_STEEL_HI, 255);
+    else if (k == step) {
+      hud_rect(x, y, bar, dot, C_STEEL, 255);
+      hud_rect(x, y, (int)(bar * clamp01(frac)), dot, C_HAZARD, 255);
+      x += bar + gap;
+      continue;
+    } else hud_frame(x, y, dot, dot, 2, C_STEEL, 255);
+    x += dot + gap;
+  }
+}
+
+/* a person seen from the front: x is the centre, y the top of the head */
+void hud_pict_person(int x, int y, int h, uint32_t body, bool newbie) {
+  if (newbie) body = 0x8b8578;
+  int r = h / 6;
+  if (r < 2) r = 2;
+  hud_circle(x, y + r, r, body, 255);
+  int bw = h / 3, by = y + 2 * r + 2;
+  hud_rect(x - bw / 2, by, bw, y + h - by, body, 255);
+}
+
+void hud_pict_station(int x, int y, int w, int h, const char *label, uint32_t edge) {
+  hud_rect(x + 4, y + 4, w, h, C_SHADOW, 255);
+  hud_rect(x, y, w, h, C_CHAR, 255);
+  hud_frame(x, y, w, h, 4, edge, 255);
+  if (label && *label) hud_text(F_MONO_S, x + w / 2, y + h / 2 - hud_font_h(F_MONO_S) / 2 - 2, label, C_BONE, 255, AL_CENTER);
+}
+
+/* x, y is the item's centre */
+void hud_pict_item(int x, int y, int kind, uint32_t c) {
+  switch (kind) {
+  case 0: hud_rect(x - 14 + 2, y - 9 + 2, 28, 18, C_SHADOW, 255); hud_rect(x - 14, y - 9, 28, 18, c, 255); break;
+  case 1: hud_rect(x - 11 + 2, y - 11 + 2, 22, 22, C_SHADOW, 255); hud_rect(x - 11, y - 11, 22, 22, c, 255); break;
+  case 2: hud_rect(x - 8 + 2, y - 8 + 2, 16, 16, C_SHADOW, 255); hud_rect(x - 8, y - 8, 16, 16, c, 255); break;
+  default:
+    for (int i = 0; i < 4; i++) {
+      float x0 = x - 20 + i * 10.f, x1 = x0 + 10;
+      hud_line(x0, (float)(i & 1 ? y - 6 : y + 6), x1, (float)(i & 1 ? y + 6 : y - 6), 3, c, 255);
+    }
+    break;
+  }
+}
+
+/* ── screen space particles ──────────────────────────────────────── */
+
+typedef struct { float x, y, vx, vy, life, max, size; uint32_t c; int kind; } fx2_t;
+#define FX2_MAX 240
+static fx2_t fx2[FX2_MAX];
+static int fx2_next;
+static uint32_t fx2_seed = 0x2f6b9e1u;   /* its own LCG: never touches the sim's random stream */
+
+static float fx2_rnd(void) { fx2_seed = fx2_seed * 1664525u + 1013904223u; return (fx2_seed >> 8) / 16777216.f; }
+
+static fx2_t *fx2_new(void) { fx2_t *f = &fx2[fx2_next]; fx2_next = (fx2_next + 1) % FX2_MAX; return f; }
+
+void fx2_burst(int kind, float x, float y, uint32_t c) {
+  static const uint32_t pal[] = { C_HAZARD, C_LIVE, C_VIOLET, C_INFO, C_RUST, C_BONE };
+  if (kind == FX2_SPARK) {
+    for (int i = 0; i < 12; i++) {
+      fx2_t *f = fx2_new();
+      float ang = fx2_rnd() * 6.2831853f, sp = 180 + fx2_rnd() * 240;
+      *f = (fx2_t){ x, y, cosf(ang) * sp, sinf(ang) * sp, 0, 0.35f + fx2_rnd() * 0.15f, 3, c, kind };
+      f->life = f->max;
+    }
+  } else if (kind == FX2_CONFETTI) {
+    for (int i = 0; i < 60; i++) {
+      fx2_t *f = fx2_new();
+      *f = (fx2_t){ x + (fx2_rnd() - 0.5f) * 400, y, (fx2_rnd() - 0.5f) * 120, 80 + fx2_rnd() * 140,
+                    0, 2.0f + fx2_rnd() * 0.6f, (float)(i & 1 ? 6 : 4), pal[i % 6], kind };
+      f->life = f->max;
+    }
+  } else {
+    for (int i = 0; i < 16; i++) {
+      fx2_t *f = fx2_new();
+      float ang = i * 6.2831853f / 16;
+      *f = (fx2_t){ x, y, cosf(ang) * 260, sinf(ang) * 260, 0, 0.4f, 4, c, kind };
+      f->life = f->max;
+    }
+  }
+}
+
+void fx2_draw(float dt) {
+  for (int i = 0; i < FX2_MAX; i++) {
+    fx2_t *f = &fx2[i];
+    if (f->life <= 0) continue;
+    f->life -= dt;
+    if (f->life <= 0) continue;
+    if (f->kind == FX2_SPARK) f->vy += 900 * dt;
+    else if (f->kind == FX2_CONFETTI) {
+      f->vy += 300 * dt;
+      float d = expf(-1.5f * dt);
+      f->vx *= d; f->vy *= d;
+    }
+    f->x += f->vx * dt; f->y += f->vy * dt;
+    float k = f->life / f->max;
+    int a = k < 0.3f ? (int)(255 * k / 0.3f) : 255;
+    int sz = (int)f->size;
+    if (f->kind == FX2_CONFETTI) hud_rect((int)f->x, (int)f->y, sz, 3, f->c, a);
+    else hud_rect((int)f->x - sz / 2, (int)f->y - sz / 2, sz, sz, f->c, a);
+  }
 }
