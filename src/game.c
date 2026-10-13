@@ -536,7 +536,7 @@ static void act(player_t *p, int kind, int ref) {
         S[ST_SHOW].timer = 4;
         fx_burst(FX_CONFETTI, S[ST_SHOW].x, 1.0f, S[ST_SHOW].z, p->color);
         pop(p, C_HAZARD, "+%d CLOUT", it->value);
-        snprintf(msg, sizeof msg, "%s SHOWED OFF: %s", p->name, item_name(it));
+        snprintf(msg, sizeof msg, "%s: %s", p->name, item_name(it));
         game_toast(msg, C_HAZARD);
         audio_play(SFX_GLAMOUR);
         if (before <= 9000 && p->clout > 9000) {

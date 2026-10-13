@@ -67,6 +67,7 @@ typedef struct {
   float title_idle;     /* seconds with no input at all on SCR_TITLE */
   int settings_then;    /* TO_MAIN or TO_LOBBY */
   int flash_step; float flash_t, flash_wipe; bool flash_fired; int flash_return;
+  float flash_end;      /* 0.25 down to 0 while the flash card drops away */
   float deny_t; char deny[48];
   int pause_row; int pauser;      /* seat */
   float cam_blend;      /* 0 orbit, 1 play */

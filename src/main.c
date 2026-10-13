@@ -358,14 +358,76 @@ static int seat_in(int id) {
   return slot;
 }
 
+/* ── the rules flash (6.6) ── */
+
+static bool flash_due(void) { return SET.help == HELP_ALWAYS || (SET.help == HELP_FIRST && !G.flash_seen); }
+
+static void flash_open(int ret) {
+  M.flash_step = 0; M.flash_t = 0; M.flash_wipe = 0; M.flash_fired = false; M.flash_end = 0;
+  M.flash_return = ret;
+  if (ret == SCR_MAIN) menu_goto(SCR_FLASH);
+  else { M.prev_screen = M.screen; M.screen = SCR_FLASH; M.t = 0; }
+}
+
+static void flash_close(void) {
+  if (M.flash_end > 0) return;
+  M.flash_end = 0.25f;
+  audio_play(SFX_MENU_BACK);
+}
+
+static void flash_next(void) {
+  if (M.flash_wipe > 0 || M.flash_end > 0) return;
+  if (M.flash_step >= 4) { flash_close(); return; }
+  M.flash_wipe = 0.3f;
+  audio_play(SFX_CARD);
+}
+
+/* the clock, the card beats and the owner's A and B */
+static void flash_update(float dt) {
+  int nav = M.owner >= 0 && seats[M.owner].present ? seats[M.owner].nav : 0;
+  if (M.flash_end > 0) {
+    M.flash_end -= dt;
+    if (M.flash_end <= 0) {
+      M.flash_end = 0;
+      G.flash_seen = true;
+      if (M.flash_return == SCR_MAIN) menu_goto(SCR_MAIN);
+      else { M.prev_screen = SCR_FLASH; M.screen = SCR_NONE; M.t = 0; }
+    }
+    return;
+  }
+  if (M.owner < 0 || !seats[M.owner].present) { flash_close(); return; }
+  if (nav & NAV_B) { flash_close(); return; }
+  if (nav & (NAV_A | NAV_START)) { flash_next(); return; }
+  if (M.flash_wipe > 0) {
+    float before = M.flash_wipe;
+    M.flash_wipe -= dt;
+    if (before > 0.15f && M.flash_wipe <= 0.15f) { M.flash_step++; M.flash_fired = false; M.flash_t = 0; }
+    if (M.flash_wipe <= 0) M.flash_wipe = 0;
+    return;
+  }
+  M.flash_t += dt;
+  /* each card's one beat */
+  static const float beat[5] = { 2.0f, 1.85f, 99, 1.9f, 1.7f };   /* card 3 has no beat */
+  static const int sfx[5] = { SFX_GLAMOUR, SFX_GLAMOUR, 0, SFX_ALARM, SFX_KARMA };
+  int k = M.flash_step > 4 ? 4 : M.flash_step;
+  if (!M.flash_fired && M.flash_t >= beat[k]) {
+    M.flash_fired = true;
+    audio_play(sfx[k]);
+    if (M.flash_step == 0) fx2_burst(FX2_SPARK, 640, 220, C_HAZARD);
+    else if (M.flash_step == 1) fx2_burst(FX2_CONFETTI, 860, 210, C_HAZARD);
+    else if (M.flash_step == 4) fx2_burst(FX2_RING, 804, 270, C_LIVE);
+  }
+  if (M.flash_t >= 2.6f) flash_next();
+}
+
 /* PLAY: the owner is P1, then everyone at the door in seat order */
 static void front_end_play(void) {
   game_begin_lobby();
   M.lobby_t = 25; M.ready_t = 0;
   if (M.owner >= 0) seat_in(M.owner);
   for (int i = 0; i < SEAT_COUNT; i++) if (seats[i].present && seats[i].pending && seats[i].slot < 0) seat_in(i);
-  /* the rules flash belongs to a later stage; until then PLAY goes straight in */
   M.prev_screen = SCR_MAIN; M.screen = SCR_NONE; M.t = 0;
+  if (flash_due()) flash_open(SCR_NONE);
 }
 
 /* the owner, alone in the lobby, held B: back to the menu with the seat kept */
@@ -386,7 +448,7 @@ static void menu_select(void) {
     case 0: front_end_play(); break;
     case 1: menu_goto(SCR_MODES); break;
     case 2: M.settings_then = TO_MAIN; menu_goto(SCR_SETTINGS); break;
-    case 3: M.flash_return = SCR_MAIN; menu_goto(SCR_FLASH); break;
+    case 3: flash_open(SCR_MAIN); break;
     case 4: menu_goto(SCR_CREDITS); break;
   }
 }
@@ -423,7 +485,11 @@ static void menu_update(float dt) {
     if (net_online()) s->seen += dt;
     if (s->seen > 12) { s->present = s->pending = false; if (M.owner == i) M.owner = -1; }
   }
-  if (front_end_up()) {
+  if (M.screen == SCR_FLASH) {
+    flash_update(dt);
+    /* over the front end the others still get their one deny line */
+    if (front_end_up()) for (int i = 0; i < SEAT_COUNT; i++) if (i != M.owner && (seats[i].nav & (NAV_A | NAV_START))) deny_seat(i);
+  } else if (front_end_up()) {
     int any = 0, claim = -1;
     for (int i = 0; i < SEAT_COUNT; i++) {
       any |= seats[i].nav;
@@ -501,6 +567,7 @@ static void seat_step(seat_t *s, int id, int pad, float dt) {
     }
     return;
   }
+  if (M.screen == SCR_FLASH && id == M.owner) { s->hold_b = 0; game_player_input(s->slot, 0, 0, 0); return; }   /* the owner's buttons drive the flash */
   if (G.phase == PH_LOBBY) {
     if (edge_s) toggle_ready(s->slot);
     s->hold_b = (b & IN_B) ? s->hold_b + dt : 0;
@@ -522,7 +589,7 @@ static int lowest_seated(void) {
 /* hold B in the lobby: 1.5 s and you go home; the owner alone gets 1.0 s and the menu */
 static void lobby_leave(void) {
   for (int i = 0; i < MAX_PLAYERS; i++) M.hold_b[i] = 0;
-  M.tape_held = false;
+  M.tape_held = M.screen == SCR_FLASH;   /* the lobby clock waits for the flash */
   if (G.phase != PH_LOBBY) return;
   for (int i = 0; i < SEAT_COUNT; i++) {
     seat_t *s = &seats[i];
@@ -570,6 +637,7 @@ static void seats_join(float dt) {
       continue;
     }
     uint32_t edge = ph->btn & ~p->prev;
+    if (M.screen == SCR_FLASH && SEAT_PHONE(i) == M.owner) { ph->hold_b = 0; game_player_input(ph->slot, 0, 0, 0); continue; }
     if (edge & (IN_A | IN_START)) any_pressed = true;
     if (G.phase == PH_LOBBY) {
       if (edge & IN_START) toggle_ready(ph->slot);
@@ -714,7 +782,8 @@ static void flow(float dt) {
         empty_t = 0;
         if (!M.tape_held) M.lobby_t -= dt;
         if (M.lobby_t < 0) M.lobby_t = 0;
-        if (all_ready()) {
+        if (M.screen == SCR_FLASH) M.ready_t = 0;
+        else if (all_ready()) {
           float before = M.ready_t;
           M.ready_t += dt;
           if (M.ready_t >= 3) { audio_play(SFX_GO); begin_night(); }

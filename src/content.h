@@ -233,6 +233,23 @@ static const run_t FLASH_CAPS[5][5] = {
   { { "SAY HI", C_LIVE }, { " OR THEY LEAVE.", C_BONE }, { NULL, 0 } },
 };
 
+/* the coach: the first 40 s of a night, one step every 8 s (chip, line); steps
+ * 1 to 3 point the ash chevrons at a station, 4 and 5 point nowhere */
+static const char *const COACH_STEPS[5][2] = {
+  { "1 CLOUT", "GRAB PLYWOOD AT THE RACK" },
+  { "2 CLOUT", "LOAD THE LASER. HOLD TO CUT" },
+  { "3 CLOUT", "CARRY IT TO SHOW & TELL" },
+  { "4 KARMA", "TEAL RINGS: HOLD TO CLEAN" },
+  { "5 KARMA", "A ? NEEDS A HI OR THEY LEAVE" },
+};
+static const int COACH_ST[5] = { ST_LUMBER, ST_LASER, ST_SHOW, -1, -1 };
+
+/* the slot bar when the room is in trouble: clutter over 80, vibe under 20 */
+static const char *const DANGER_LINES[2][2] = {
+  { "CLUTTER!", "CLEAN. THE MARSHAL IS COUNTING." },
+  { "VIBES!",   "SAY HI. CLEAN UP." },
+};
+
 static const int END_VARIANT_COUNT[4] = { 0, 2, 3, 3 };
 
 #endif

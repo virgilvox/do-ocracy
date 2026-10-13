@@ -196,44 +196,42 @@ static void station_labels(void) {
         if (s->state == S_BROKEN) { snprintf(st, sizeof st, "JAMMED. HOLD TO FIX"); c = C_INK_ERR; alarm = true; pay = 2; }
         else if (s->state == S_BUSY) snprintf(st, sizeof st, "PRINTING %ds", (int)ceilf(s->timer));
         else if (s->state == S_DONE) { snprintf(st, sizeof st, "READY. GRAB IT"); c = C_HAZARD; }
-        else snprintf(st, sizeof st, "START A PRINT");
         break;
-      case ST_LUMBER: pay = 1; snprintf(st, sizeof st, "PLYWOOD FOR THE LASER"); break;
-      case ST_BENCH: pay = 1; snprintf(st, sizeof st, "HOLD TO SOLDER"); break;
-      case ST_CUTSALOT: pay = 1; snprintf(st, sizeof st, "ALWAYS FREE. STICKERS"); break;
-      case ST_SHOW: pay = 1; snprintf(st, sizeof st, "BRING PROJECTS HERE"); c = C_HAZARD; break;
+      case ST_LUMBER: case ST_BENCH: case ST_CUTSALOT: case ST_SHOW: pay = 1; break;
       case ST_SINK:
         pay = 2;
         if (s->count) { snprintf(st, sizeof st, "%d DISHES. HOLD TO WASH", s->count); c = s->count > 5 ? C_INK_ERR : C_ASH; alarm = s->count > 5; }
-        else snprintf(st, sizeof st, "CLEAN. FOR NOW");
         break;
       case ST_FRIDGE:
         if (s->smell) { snprintf(st, sizeof st, "SMELLS. HOLD TO CLEAN"); c = C_INK_ERR; alarm = true; pay = 2; }
-        else snprintf(st, sizeof st, "CLUB-MATE: SPEED BOOST");
         break;
-      case ST_TRASH: pay = 2; snprintf(st, sizeof st, "JUNK GOES HERE"); break;
-      case ST_FREEPILE: pay = 2; snprintf(st, sizeof st, "DONATIONS GO HERE"); break;
+      case ST_TRASH: case ST_FREEPILE: pay = 2; break;
     }
-    /* the status line only when it matters: trouble, something ready, or a person close by */
-    bool near = false;
+    /* the name when it matters (trouble, something ready, a person within 3
+     * units, or the level keeps it up) and dimmed to 150 unless it is one of
+     * the first three; the status line only for trouble, ready, or 1.4 units */
+    float near_d = 99;
     for (int k = 0; k < MAX_PLAYERS; k++) {
       player_t *p = &P[k];
       if (!p->active || p->bot) continue;
       float dx = fabsf(p->x - s->x) - s->hw, dz = fabsf(p->z - s->z) - s->hd;
-      if (dx < 2.2f && dz < 2.2f) near = true;
+      float d = fmaxf(dx, dz);
+      if (d < near_d) near_d = d;
     }
+    bool near = near_d < 3.0f, close = near_d < 1.4f;
     bool ready = (i == ST_LASER && s->state == S_LOADED) || ((i == ST_PRINT1 || i == ST_PRINT2) && s->state == S_DONE);
     if (names_only) { st[0] = 0; alarm = false; }
-    if (!(alarm || ready || near)) st[0] = 0;
+    if (!(alarm || ready || close)) st[0] = 0;
     if (!(alarm || ready || near || s->always_label)) continue;
+    int na = alarm || ready || near ? 240 : 150, ta = alarm || ready || near ? 255 : 150;
     uint32_t edge = pay == 1 ? C_HAZARD : pay == 2 ? C_LIVE : C_STEEL_HI;
     int w = hud_text_w(F_MONO_S, s->label);
     int sw = st[0] ? hud_text_w(F_MONO_S, st) + 12 : 0;
     int bw = (w + 16 > sw ? w + 16 : sw);
     sy = settle(sx - bw / 2, sy - 4, bw, st[0] ? 48 : 24) + 4;
-    hud_rect(sx - w / 2 - 8, sy - 4, w + 16, 24, C_CHAR, 240);
-    hud_rect(sx - w / 2 - 8, sy - 4, 4, 24, edge, 255);
-    hud_text(F_MONO_S, sx + 2, sy, s->label, C_BONE, 255, AL_CENTER);
+    hud_rect(sx - w / 2 - 8, sy - 4, w + 16, 24, C_CHAR, na);
+    hud_rect(sx - w / 2 - 8, sy - 4, 4, 24, edge, ta);
+    hud_text(F_MONO_S, sx + 2, sy, s->label, C_BONE, ta, AL_CENTER);
     if (st[0]) label(sx, sy + 24, st, c, C_TAPE, F_MONO_S);
     if (alarm) {
       float pulse = 0.5f + 0.5f * sinf(T * 8);
@@ -244,30 +242,30 @@ static void station_labels(void) {
   }
 }
 
+/* one label per thing on the floor: a red tag wins over everything else */
 static void floor_tags(void) {
+  bool words = G.group_nights <= 1;   /* SWEEP ME and MOP ME on a group's first night only */
   for (int i = 0; i < MAX_ITEMS; i++) {
     item_t *it = &I[i];
     if (!it->alive || it->holder >= 0) continue;
     int sx, sy;
     if (!project(it->x, 0.45f, it->z, &sx, &sy)) continue;
     bool red = it->age > 25 && it->type != IT_PROJECT && it->type != IT_PLYWOOD;
-    if (it->type == IT_SAWDUST || it->type == IT_PUDDLE || it->type == IT_DAISY) {
+    bool mess = it->type == IT_SAWDUST || it->type == IT_PUDDLE || it->type == IT_DAISY;
+    if (mess) {
       /* a mess: a ring that says clean me */
       float pulse = 0.5f + 0.5f * sinf(T * 4 + i);
-      hud_ring(sx, sy + 8, 15 + (int)(pulse * 3), 3, 1, it->type == IT_DAISY ? C_FAULT : C_LIVE, 200);
-      label_av(sx, sy - 26, it->type == IT_DAISY ? "UNPLUG ME" : it->type == IT_PUDDLE ? "MOP ME" : "SWEEP ME", it->type == IT_DAISY ? C_INK_ERR : C_INK_OK, C_CHAR, F_MONO_S);
-    } else if (it->type == IT_PROJECT) {
-      label_av(sx, sy - 20, item_name(it), C_HAZARD, C_CHAR, F_MONO_S);
-    } else if (it->type == IT_DONATION) {
-      label_av(sx, sy - 20, item_name(it), C_BONE, C_CHAR, F_MONO_S);
-      label_av(sx, sy + 2, "TO FREE PILE", C_INK_OK, C_TAPE, F_MONO_S);
-    } else if (it->type != IT_PLYWOOD) {
-      label_av(sx, sy - 18, "TRASH ME", C_INK_OK, C_CHAR, F_MONO_S);
+      int r = 15 + (int)(pulse * 3);
+      uint32_t rc = it->type == IT_DAISY ? C_FAULT : C_LIVE;
+      hud_ring(sx, sy + 8, r, 3, 1, rc, 200);
+      /* a red tag below is the one label; otherwise the words or the broom */
+      if (!red && it->type == IT_DAISY) label_av(sx, sy - 26, "UNPLUG ME", C_INK_ERR, C_CHAR, F_MONO_S);   /* a safety line: always */
+      else if (!red && words) label_av(sx, sy - 26, it->type == IT_PUDDLE ? "MOP ME" : "SWEEP ME", C_INK_OK, C_CHAR, F_MONO_S);
+      else if (!red) hud_glyph(sx - 8, sy + 8 - r - 18, GL_BROOM, 1, rc, 220);
     }
-    if (red) {
-      hud_rect(sx - 30, sy + 14, 60, 16, C_FAULT, 255);
-      hud_text(F_MONO_S, sx, sy + 13, "RED TAG", C_BONE, 255, AL_CENTER);
-    }
+    if (red) label_av(sx, sy - 20, "RED TAG", C_BONE, C_FAULT, F_MONO_S);
+    else if (it->type == IT_PROJECT) label_av(sx, sy - 20, item_name(it), C_HAZARD, C_CHAR, F_MONO_S);
+    else if (it->type == IT_DONATION) label_av(sx, sy - 20, item_name(it), C_BONE, C_CHAR, F_MONO_S);
   }
 }
 
@@ -282,9 +280,7 @@ static void npcs_overlay(void) {
       hud_circle(sx, sy, 20, C_CHAR, 235);
       hud_ring(sx, sy, 20, 5, f, f < 0.35f ? C_FAULT : C_LIVE, 255);
       hud_text(F_H3, sx, sy - 16, "?", C_BONE, 255, AL_CENTER);
-      label_av(sx, sy + 26, f < 0.35f ? "LEAVING! SAY HI" : "NEWBIE: SAY HI", f < 0.35f ? C_INK_ERR : C_INK_OK, C_CHAR, F_MONO_S);
-    } else if (n->state == 2) {
-      hud_text(F_MONO_S, sx, sy + 10, "MEMBER", C_INK_OK, 255, AL_CENTER);
+      if (f < 0.35f) label_av(sx, sy + 26, "SAY HI", C_INK_ERR, C_CHAR, F_MONO_S);
     }
   }
 }
@@ -293,8 +289,13 @@ static void npcs_overlay(void) {
 static void goal_guides(void) {
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &P[i];
-    if (!p->active || !p->has_goal || (p->bot && !bot_guides)) continue;
-    station_t *s = &S[p->goal_st];
+    if (!p->active || (p->bot && !bot_guides)) continue;
+    /* no goal: the coach's station, in ash, for humans only */
+    bool coached = !p->has_goal && !p->bot && G.coach_st >= 0 && S[G.coach_st].present;
+    if (!p->has_goal && !coached) continue;
+    station_t *s = &S[coached ? G.coach_st : p->goal_st];
+    uint32_t col = coached ? C_ASH : p->color;
+    int ca = coached ? 150 : 230;
     /* target footprint, pulsing in the player's colour */
     float pulse = 0.5f + 0.5f * sinf(T * 6);
     float m = 0.25f + pulse * 0.12f;
@@ -303,7 +304,7 @@ static void goal_guides(void) {
     float px[4], py[4];
     bool ok = true;
     for (int k = 0; k < 4; k++) ok &= projf(cx[k], 0.05f, cz[k], &px[k], &py[k]);
-    if (ok) for (int k = 0; k < 4; k++) hud_line(px[k], py[k], px[(k + 1) % 4], py[(k + 1) % 4], 5, p->color, 220);
+    if (ok && !coached) for (int k = 0; k < 4; k++) hud_line(px[k], py[k], px[(k + 1) % 4], py[(k + 1) % 4], 5, col, 220);
     /* chevrons marching along the floor toward it */
     float dx = s->x - p->x, dz = s->z - p->z, d = sqrtf(dx * dx + dz * dz);
     float edge = fmaxf(s->hw, s->hd) + 0.4f;
@@ -315,22 +316,30 @@ static void goal_guides(void) {
         float wx = p->x + ux * t, wz = p->z + uz * t;
         if (!projf(wx, 0.06f, wz, &ax, &ay) || !projf(wx + ux * 0.3f, 0.06f, wz + uz * 0.3f, &bx, &by)) continue;
         float fade = fminf(1, (t - 0.6f) / 0.8f);
-        hud_chevron(ax, ay, bx - ax, by - ay, 22, 6, p->color, (int)(230 * fade));
+        hud_chevron(ax, ay, bx - ax, by - ay, 22, 6, col, (int)(ca * fade));
       }
     }
   }
 }
 
 static void players_overlay(void) {
+  /* one proposal bubble on screen: the newest */
+  int talk = -1;
+  for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active && P[i].bubble > 0 && (talk < 0 || P[i].bubble > P[talk].bubble)) talk = i;
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &P[i];
     if (!p->active) continue;
     int sx, sy;
     if (!project(p->x, 2.25f, p->z, &sx, &sy)) continue;
-    /* name tag in the player's colour */
+    /* name tag in the player's colour; a bot's is a smaller, dimmer one */
     int w = hud_text_w(F_MONO_S, p->name);
-    hud_rect(sx - w / 2 - 7, sy - 2, w + 14, 22, p->color, 255);
-    hud_text(F_MONO_S, sx, sy, p->name, C_TAPE, 255, AL_CENTER);
+    if (p->bot) {
+      hud_rect(sx - w / 2 - 5, sy + 2, w + 10, 14, p->color, 170);
+      hud_text(F_MONO_S, sx, sy, p->name, C_TAPE, 170, AL_CENTER);
+    } else {
+      hud_rect(sx - w / 2 - 7, sy - 2, w + 14, 22, p->color, 255);
+      hud_text(F_MONO_S, sx, sy, p->name, C_TAPE, 255, AL_CENTER);
+    }
     /* the goal line for whatever is in your hands */
     if (p->has_goal && !p->bot) {
       int gw = hud_text_w(F_MONO_S, p->goal_label) + 18;
@@ -370,7 +379,7 @@ static void players_overlay(void) {
       hud_text(F_H2, sx + 3, sy - 86 - rise + 3, p->pop, C_SHADOW, a, AL_CENTER);
       hud_text(F_H2, sx, sy - 86 - rise, p->pop, p->pop_color, a, AL_CENTER);
     }
-    if (p->bubble > 0) {
+    if (i == talk) {
       const char *t = PROPOSALS[p->bubble_text];
       int bw = hud_text_w(F_MONO_S, t);
       if (bw < 190) bw = 190;
@@ -384,17 +393,84 @@ static void players_overlay(void) {
 
 /* ── panels ──────────────────────────────────────────────────────── */
 
-static void join_strip(int x, int y) {
-  hud_panel(x, y, 320, 56, C_SLAB, C_STEEL_HI);
-  if (net_online()) {
-    hud_qr(x + 5, y + 4, 48, G.join_url);
-    hud_eyebrow(x + 62, y + 8, "PHONES JOIN", C_ASH, AL_LEFT);
-    hud_text(F_H3, x + 60, y + 24, G.room, C_HAZARD, 255, AL_LEFT);
-    hud_text(F_MONO_S, x + 308, y + 32, "ANY TIME", C_SMOKE, 255, AL_RIGHT);
+static float clampf(float v, float a, float b) { return v < a ? a : v > b ? b : v; }
+static int lerpi(int a, int b, float k) { return a + (int)((b - a) * k); }
+static bool phones_on(void) { return SET.phones && net_online(); }
+static int seat_glyph(int seat) { return seat < 0 ? GL_BOT : seat < SEAT_KB(0) ? GL_PAD : seat < SEAT_PHONE(0) ? GL_KEYS : GL_PHONE; }
+
+/* the phone join strip. The lobby shows it wide; in the night it starts wide
+ * (SOLO, CHAOS, CUSTOM) and tweens to the narrow form at 45 s, or is narrow
+ * from the start beside the mode panel (CO-OP, VERSUS). Hidden with phones
+ * off or the relay down */
+static void join_strip_k(float k) {
+  if (!phones_on()) return;
+  int x = lerpi(944, 1144, k), w = lerpi(320, 120, k);
+  hud_panel(x, 6, w, 56, C_SLAB, C_STEEL_HI);
+  if (k < 0.5f) {
+    hud_qr(x + 5, 10, 48, G.join_url);
+    hud_eyebrow(x + 62, 12, "PHONES JOIN", C_ASH, AL_LEFT);
+    hud_text(F_H3, x + 60, 30 - 6, G.room, C_HAZARD, 255, AL_LEFT);
   } else {
-    hud_eyebrow(x + 14, y + 10, "PHONES OFFLINE", C_ASH, AL_LEFT);
-    hud_text(F_MONO_S, x + 14, y + 32, "GRAB A CONTROLLER.", C_BONE, 255, AL_LEFT);
+    hud_qr(x + 6, 10, 48, G.join_url);
+    hud_text(F_MONO_S, x + 60, 16, G.room, C_HAZARD, 255, AL_LEFT);
+    hud_eyebrow(x + 60, 38, "JOIN", C_ASH, AL_LEFT);
   }
+}
+static void join_strip(void) {
+  bool narrow = G.mode == MODE_COOP || G.mode == MODE_VERSUS;
+  float k = narrow ? 1 : hud_ease_inout(clampf((G.t - 45) / 0.3f, 0, 1));
+  join_strip_k(k);
+}
+
+/* 1240 reads 1,240 */
+static void commas(char *b, int n, int v) {
+  char t[16]; snprintf(t, sizeof t, "%d", v < 0 ? -v : v);
+  int l = (int)strlen(t), o = 0;
+  if (v < 0 && o < n - 1) b[o++] = '-';
+  for (int i = 0; i < l && o < n - 1; i++) {
+    b[o++] = t[i];
+    if ((l - 1 - i) % 3 == 0 && i < l - 1 && o < n - 1) b[o++] = ',';
+  }
+  b[o] = 0;
+}
+
+/* the right slot by mode: CO-OP shows the team, VERSUS the leader */
+static void mode_panel(void) {
+  char b[48];
+  if (G.mode == MODE_COOP) {
+    hud_panel(944, 6, 196, 56, C_SLAB, C_STEEL_HI);
+    hud_eyebrow(958, 12, "TEAM KARMA", C_ASH, AL_LEFT);
+    commas(b, sizeof b, G.team_karma);
+    hud_text(F_H2, 956, 22, b, C_LIVE, 255, AL_LEFT);
+  } else if (G.mode == MODE_VERSUS) {
+    int top = -1;
+    for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active && (top < 0 || P[i].clout > P[top].clout)) top = i;
+    hud_panel(944, 6, 196, 56, C_SLAB, C_STEEL_HI);
+    hud_eyebrow(958, 12, "LEADER", C_ASH, AL_LEFT);
+    if (top >= 0) {
+      char c[16]; commas(c, sizeof c, P[top].clout);
+      snprintf(b, sizeof b, "%s %s", P[top].name, c);
+      hud_clip(944, 6, 192, 56);
+      hud_text(F_H3, 958, 30, b, C_HAZARD, 255, AL_LEFT);
+      hud_clip_clear();
+    }
+  }
+}
+
+/* the widest toast that is showing, for the reserve */
+static int toast_w(int i) {
+  char b[49]; snprintf(b, sizeof b, "%s", toast_text[i]);   /* the drawer cuts at 48 */
+  return hud_text_w(F_MONO_S, b) + 18;
+}
+static int toasts_widest(void) {
+  int w = 0, shown = 0;
+  for (int i = 0; i < TOASTS && shown < 2; i++) {
+    if (toast_t[i] <= 2) continue;
+    int tw = toast_w(i);
+    if (tw > w) w = tw;
+    shown++;
+  }
+  return w;
 }
 
 /* the feed: the two newest lines, right aligned under the top bar, gone in a few seconds */
@@ -404,11 +480,12 @@ static void toasts(int xr, int y) {
     if (toast_t[i] <= 2) continue;
     float t = toast_t[i] - 2;
     int a = t < 1 ? (int)(t * 255) : 255;
-    int w = hud_text_w(F_MONO_S, toast_text[i]) + 18;
+    char b[49]; snprintf(b, sizeof b, "%s", toast_text[i]);
+    int w = toast_w(i);
     int ty = y + shown * 24;
     hud_rect(xr - w, ty, w, 21, C_CHAR, a * 210 / 255);
-    hud_rect(xr - 4, ty, 4, 21, toast_col[i], a);
-    hud_text(F_MONO_S, xr - w + 8, ty + 2, toast_text[i], C_BONE, a, AL_LEFT);
+    hud_rect(xr - w, ty, 4, 21, toast_col[i], a);
+    hud_text(F_MONO_S, xr - w + 10, ty + 2, b, C_BONE, a, AL_LEFT);
     shown++;
   }
 }
@@ -443,45 +520,51 @@ static void ticker_band(void) {
   slot_bar(G.ticker, c, G.ticker_sub, c == C_FAULT ? C_INK_ERR : C_BONE, a, (int)((k - 1) * 20));
 }
 
-static void meter(int x, int y, int w, const char *name, const char *rule, float v, uint32_t fill, const char *right) {
+/* a meter: eyebrow, the value right aligned at vx, a glyph at gx, the bar */
+static void meter(int x, int y, int w, const char *name, int vx, int gx, int glyph, uint32_t gc, int ga,
+                  float v, uint32_t fill, const char *right, uint32_t rc) {
   hud_eyebrow(x, y, name, C_BONE, AL_LEFT);
-  hud_text(F_MONO_S, x + hud_text_w(F_MONO_S, name) * 2 + 10, y, rule, C_SMOKE, 255, AL_LEFT);
-  hud_text(F_MONO_S, x + w, y, right, C_ASH, 255, AL_RIGHT);
+  hud_text(F_MONO_S, vx, y, right, rc, 255, AL_RIGHT);
+  hud_glyph(gx, y - 2, glyph, 1, gc, ga);
   hud_bar(x, y + 20, w, 16, v / 100.f, fill, C_CHAR);
 }
 
 /* two compact rows: clock, meters and join on top; messages in a strip below.
  * Both sit above the room, never over it */
 static void top_bar(void) {
-  char clk[16];
-  clock_str(clk, sizeof clk);
   hud_panel(16, 6, 300, 56, C_SLAB, C_STEEL_HI);
   hud_logo(20, 9, 50, C_BONE);
-  hud_text(F_H2, 74, 14, G.phase == PH_NIGHT ? clk : "7:00 PM", C_BONE, 255, AL_LEFT);
-  if (G.phase == PH_NIGHT) {
-    /* how much night is left: a countdown and a bar with the hours on it */
-    int left = (int)ceilf(G.night_len - G.t);
-    if (left < 0) left = 0;
-    bool closing = left <= 30;
-    char lt[24];
-    snprintf(lt, sizeof lt, "%d:%02d LEFT", left / 60, left % 60);
-    hud_text(F_MONO_S, 306, 10, lt, closing && fmodf(T, 0.8f) < 0.5f ? C_HAZARD : C_ASH, 255, AL_RIGHT);
-    float f = G.t / G.night_len;
-    int bx = 76, bw = 232, by = 54;
-    hud_rect(bx, by, bw, 5, C_CHAR, 255);
-    hud_rect(bx, by, (int)(bw * fminf(1, f)), 5, closing ? C_RUST : C_HAZARD, 255);
-    for (int h = 1; h < 4; h++) hud_rect(bx + bw * h / 4, by, 2, 5, C_STEEL_HI, 255);
-  } else { hud_text(F_MONO_S, 306, 10, "DOORS OPEN", C_ASH, 255, AL_RIGHT); return; }   /* the lobby panel takes the meters' place */
+  if (G.phase != PH_NIGHT) {
+    hud_text(F_H2, 74, 14, "7:00 PM", C_BONE, 255, AL_LEFT);
+    hud_text(F_MONO_S, 306, 10, "DOORS OPEN", C_ASH, 255, AL_RIGHT);
+    return;   /* the lobby panel takes the meters' place */
+  }
+  /* how much night is left, big; the clock on the wall, small */
+  int left = (int)ceilf(G.night_len - G.t);
+  if (left < 0) left = 0;
+  bool closing = left <= 30;
+  char lt[24], clk[16];
+  snprintf(lt, sizeof lt, "%d:%02d", left / 60, left % 60);
+  hud_text(F_H2, 74, 10, lt, closing && fmodf(T, 0.8f) < 0.5f ? C_HAZARD : C_BONE, 255, AL_LEFT);
+  clock_str(clk, sizeof clk);
+  hud_text(F_MONO_S, 306, 12, clk, C_ASH, 255, AL_RIGHT);
+  float f = G.t / G.night_len;
+  int bx = 76, bw = 232, by = 54;
+  hud_rect(bx, by, bw, 5, C_CHAR, 255);
+  hud_rect(bx, by, (int)(bw * fminf(1, f)), 5, closing ? C_RUST : C_HAZARD, 255);
+  for (int h = 1; h < 4; h++) hud_rect(bx + bw * h / 4, by, 2, 5, C_STEEL_HI, 255);
 
   hud_panel(330, 6, 600, 56, C_SLAB, C_STEEL_HI);
   float c = G.clutter > 100 ? 100 : G.clutter;
   uint32_t cf = c > 80 ? C_FAULT : c > 55 ? C_RUST : C_HAZARD;
+  uint32_t mc = c > 80 ? C_FAULT : c > 55 ? C_RUST : C_SMOKE;
+  int ma = c > 80 ? 150 + (int)(105 * (0.5f + 0.5f * sinf(T * 6.2832f * 4))) : 255;
   char r[48];
   if (G.fire_warn > 0) snprintf(r, sizeof r, "FIRE MARSHAL IN %d", (int)ceilf(5 - G.fire_warn));
   else snprintf(r, sizeof r, "%d", (int)c);
-  meter(346, 12, 270, "CLUTTER", "100 = FIRE MARSHAL", c, cf, r);
+  meter(346, 12, 270, "CLUTTER", 596, 604, GL_MARSHAL, mc, ma, c, cf, r, G.fire_warn > 0 ? C_FAULT : C_ASH);
   snprintf(r, sizeof r, "%d", (int)G.vibe);
-  meter(640, 12, 274, "VIBE", "0 = BURNOUT", G.vibe, G.vibe < 25 ? C_FAULT : C_LIVE, r);
+  meter(640, 12, 274, "VIBE", 898, 906, GL_HEART, G.vibe < 25 ? C_FAULT : C_LIVE, 255, G.vibe, G.vibe < 25 ? C_FAULT : C_LIVE, r, C_ASH);
   if (G.fire_warn > 0 && fmodf(T, 0.5f) < 0.25f) hud_frame(0, 0, HUD_W, HUD_H, 12, C_FAULT, 220);
   if (G.heat > 0) hud_rect(0, 0, HUD_W, HUD_H, 0xff7a1a, 28);
 }
@@ -492,23 +575,25 @@ static void player_cards(void) {
   int cw = n > 4 ? 150 : 210, gap = 10;
   int total = n * cw + (n - 1) * gap;
   int x = HUD_W / 2 - total / 2, y = HUD_H - 62;
+  bool coop = G.mode == MODE_COOP;
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &P[i];
     if (!p->active) continue;
     hud_panel(x, y, cw, 50, C_SLAB, C_STEEL_HI);
     hud_rect(x, y, 8, 50, p->color, 255);
-    hud_text(F_MONO_S, x + 16, y + 6, p->name, C_BONE, 255, AL_LEFT);
-    const char *tag = p->bot ? "BOT" : p->phone ? "PHONE" : p->kb >= 0 ? "KEYS" : "PAD";
-    hud_text(F_MONO_S, x + cw - 8, y + 6, tag, C_SMOKE, 255, AL_RIGHT);
+    hud_clip(x, y, cw - 28, 50);
+    hud_text(F_MONO_S, x + 16, y + 4, p->name, C_BONE, 255, AL_LEFT);
+    hud_clip_clear();
+    hud_glyph(x + cw - 24, y + 6, p->bot ? GL_BOT : p->phone ? GL_PHONE : seat_glyph(p->seat), 1, C_SMOKE, 255);
     char b[24];
+    hud_glyph(x + 14, y + 26, GL_CLOUT, 1, coop ? C_SMOKE : C_HAZARD, 255);
     snprintf(b, sizeof b, "%d", p->clout);
-    hud_text(F_MONO_L, x + 16, y + 16, b, C_HAZARD, 255, AL_LEFT);
+    hud_text(F_MONO_L, x + 34, y + 21, b, coop ? C_SMOKE : C_HAZARD, 255, AL_LEFT);
     snprintf(b, sizeof b, "%d", p->karma);
-    hud_text(F_MONO_L, x + cw - 10, y + 16, b, C_INK_OK, 255, AL_RIGHT);
+    int kw = hud_text(F_MONO_L, x + cw - 10, y + 21, b, C_INK_OK, 255, AL_RIGHT);
+    hud_glyph(x + cw - 10 - kw - 20, y + 26, GL_KARMA, 1, C_INK_OK, 255);
     x += cw + gap;
   }
-  hud_eyebrow(HUD_W / 2 - total / 2, y - 20, "CLOUT", C_HAZARD, AL_LEFT);
-  hud_eyebrow(HUD_W / 2 + total / 2, y - 20, "KARMA", C_INK_OK, AL_RIGHT);
 }
 
 static bool danger(void) {
@@ -516,43 +601,40 @@ static bool danger(void) {
   float c = G.clutter;
   if (!(c > 80 || G.vibe < 20)) return false;
   int a = fmodf(T, 0.6f) < 0.4f ? 255 : 150;
-  if (c > 80) slot_bar("TOO MUCH CLUTTER!", C_FAULT, "CLEAN UP BEFORE THE FIRE MARSHAL COMES", C_INK_ERR, a, 0);
-  else slot_bar("VIBES ARE DYING!", C_FAULT, "SAY HI TO NEWBIES. CLEAN UP.", C_INK_ERR, a, 0);
+  int k = c > 80 ? 0 : 1;
+  slot_bar(DANGER_LINES[k][0], C_FAULT, DANGER_LINES[k][1], C_INK_ERR, a, 0);
   return true;
 }
 
-/* the first forty seconds of every night: a coach walks you through it */
-static void coach(void) {
-  if (G.phase != PH_NIGHT || G.t > 40) return;
-  /* the stations are named by the level, through one %s each */
-  static const char *const STEP[][2] = {
-    { "1 CLOUT", "GRAB PLYWOOD FROM THE %s (BACK WALL)" },
-    { "2 CLOUT", "LOAD IT INTO THE %s, THEN HOLD TO CUT" },
-    { "3 CLOUT", "CARRY YOUR PROJECT TO THE %s (FRONT)" },
-    { "4 KARMA", "TEAL RINGS ARE MESSES: HOLD TO CLEAN. JUNK GOES IN THE TRASH" },
-    { "5 KARMA", "NEWBIES WITH A ? NEED A HI, OR THEY LEAVE" },
-  };
-  static const int STEP_ST[5] = { ST_LUMBER, ST_LASER, ST_SHOW, -1, -1 };
+/* which coach step is up, or -1. HELP OFF: never. FIRST NIGHT: steps 1 to 3
+ * on the group's first night, 4 and 5 only if the rules flash was skipped
+ * over. ALWAYS: every night, all five. Sets G.coach_st for the ash guides */
+static int coach_step(void) {
+  G.coach_st = -1;
+  if (G.phase != PH_NIGHT || G.attract || G.t > 40 || SET.help == HELP_OFF) return -1;
   int k = (int)(G.t / 8);
   if (k > 4) k = 4;
+  if (SET.help == HELP_FIRST) {
+    if (G.group_nights > 1) return -1;
+    if (k >= 3 && G.flash_seen) return -1;
+  }
+  G.coach_st = COACH_ST[k];
+  return k;
+}
+
+/* the first forty seconds of a night: a coach walks you through it */
+static void coach(void) {
+  int k = coach_step();
+  if (k < 0 || G.ticker_t > 0) return;   /* one thing at a time up top */
   float local = G.t - k * 8;
   int a = local < 0.3f ? (int)(local / 0.3f * 255) : 255;
-  bool karma = k >= 3;
-  if (G.ticker_t > 0) return;   /* one thing at a time up top */
-  char msg[96];
-  if (STEP_ST[k] >= 0) snprintf(msg, sizeof msg, STEP[k][1], S[STEP_ST[k]].label);
-  else snprintf(msg, sizeof msg, "%s", STEP[k][1]);
-  slot_bar(STEP[k][0], karma ? C_LIVE : C_HAZARD, msg, C_BONE, a, 0);
+  slot_bar(COACH_STEPS[k][0], k >= 3 ? C_LIVE : C_HAZARD, COACH_STEPS[k][1], C_BONE, a, 0);
 }
 
 /* ── full screens ────────────────────────────────────────────────── */
 
 /* ── the front end: title, attract, main menu (FINAL-frontend.md 6.1 to 6.3) ── */
 
-static float clampf(float v, float a, float b) { return v < a ? a : v > b ? b : v; }
-static int lerpi(int a, int b, float k) { return a + (int)((b - a) * k); }
-static bool phones_on(void) { return SET.phones && net_online(); }
-static int seat_glyph(int seat) { return seat < 0 ? GL_BOT : seat < SEAT_KB(0) ? GL_PAD : seat < SEAT_PHONE(0) ? GL_KEYS : GL_PHONE; }
 static const char *seat_cap(int seat, int btn) {
   static const char *const PAD[4] = { "A", "B", "X", "START" };
   static const char *const KB0[4] = { "SPACE", "Q", "R", "ENTER" };
@@ -809,6 +891,160 @@ static void menu_unbuilt(void) {
   hud_set_alpha(255);
 }
 
+/* ── the rules flash (6.6): five cards, one picture and one line each ── */
+
+static float lin(float lt, float a, float b) { return clampf((lt - a) / (b - a), 0, 1); }
+
+/* the seat whose buttons the flash names */
+static const char *flash_glyph(void) {
+  int seat = M.owner;
+  if (seat < 0) return "A";
+  return seat_cap(seat, 0);
+}
+
+/* a score pop rising 40 px over 0.5 s */
+static void flash_pop(int x, int y, const char *s, uint32_t c, float t) {
+  if (t < 0) return;
+  float e = hud_ease_out(fminf(1, t / 0.5f));
+  hud_text_sh(F_H2, x, y - (int)(40 * e), s, c, 255, AL_CENTER);
+}
+
+/* one card's picture with its origin at (300 + ox, 150) */
+static void flash_card(int step, float lt, int ox) {
+  int X = 300 + ox, Y = 150;
+  switch (step) {
+    case 0: {   /* HOLD A. DO THE THING. */
+      hud_pict_station(X + 240, Y + 20, 200, 100, "LASER", C_HAZARD);
+      hud_pict_person(X + 340, Y + 150, 72, PCOL[0], false);
+      float done = lin(lt, 0.6f, 2.0f);
+      int bx = X + 240, by = Y + 236, bw = 200;
+      hud_rect(bx + 4, by + 4, bw, 32, C_SHADOW, 220);
+      hud_rect(bx, by, bw, 32, C_CHAR, 240);
+      if (done > 0) {
+        hud_rect(bx, by, (int)(bw * done), 32, C_HAZARD, 90);
+        hud_rect(bx, by + 26, (int)(bw * done), 6, C_HAZARD, 255);
+      }
+      hud_frame(bx, by, bw, 32, 2, C_HAZARD, 255);
+      bool pulse = done < 1 && done > 0 && fmodf(lt, 0.5f) < 0.06f;
+      int kw = hud_keycap(bx + 6, by + 3, flash_glyph(), pulse || done > 0 ? C_BONE : C_HAZARD, C_TAPE);
+      hud_text(F_MONO, bx + kw + 16, by + 3, "CUT", done > 0 ? C_BONE : C_HAZARD, 255, AL_LEFT);
+      if (lt >= 2.0f) flash_pop(X + 525, Y + 170, "+1040 CLOUT", C_HAZARD, lt - 2.0f);
+      break;
+    }
+    case 1: {   /* FOLLOW THE ARROW. */
+      float pa = 160 + 80 * (0.5f + 0.5f * sinf(T * 6));
+      hud_pict_station(X + 480, Y + 40, 160, 100, "SHOW & TELL", C_HAZARD);
+      hud_frame(X + 472, Y + 32, 176, 116, 5, PCOL[0], (int)pa);
+      int px = X + 80 + (int)(320 * hud_ease_inout(lin(lt, 0.4f, 1.8f)));
+      hud_pict_person(px, Y + 150, 72, PCOL[0], false);
+      if (lt < 1.85f) hud_pict_item(px + 20, Y + 120, 1, C_HAZARD);
+      else hud_pict_item(X + 560, Y + 62, 1, C_HAZARD);   /* in the box */
+      float ph = fmodf(T * 2.5f, 1) * 44;
+      for (float cx = px + 40 + ph; cx < X + 470; cx += 44) {
+        float fade = fminf(1, (cx - px - 40) / 40.f);
+        hud_chevron(cx, (float)(Y + 190), 1, 0, 22, 6, PCOL[0], (int)(230 * fade));
+      }
+      break;
+    }
+    case 2: {   /* AMBER IS YOURS. TEAL IS OURS. */
+      float f = lin(lt, 0.3f, 1.5f);
+      char b[16];
+      hud_rect(X + 20, Y + 20, 8, 240, C_HAZARD, 255);
+      hud_text(F_H1, X + 44, Y + 20, "CLOUT", C_HAZARD, 255, AL_LEFT);
+      hud_glyph(X + 44, Y + 100, GL_CLOUT, 3, C_HAZARD, 255);
+      hud_pict_item(X + 120, Y + 110 + 14, 1, C_HAZARD);
+      snprintf(b, sizeof b, "+%d", (int)(900 * f));
+      hud_text(F_MONO_L, X + 44, Y + 170, b, C_HAZARD, 255, AL_LEFT);
+      hud_eyebrow(X + 44, Y + 220, "FOR YOU", C_ASH, AL_LEFT);
+      hud_rect(X + 350, Y + 20, 8, 240, C_LIVE, 255);
+      hud_text(F_H1, X + 374, Y + 20, "KARMA", C_LIVE, 255, AL_LEFT);
+      hud_glyph(X + 374, Y + 100, GL_KARMA, 3, C_LIVE, 255);
+      hud_glyph(X + 440, Y + 100, GL_BROOM, 3, C_LIVE, 255);
+      snprintf(b, sizeof b, "+%d", (int)(40 * f));
+      hud_text(F_MONO_L, X + 374, Y + 170, b, C_LIVE, 255, AL_LEFT);
+      hud_eyebrow(X + 374, Y + 220, "FOR THE SPACE", C_ASH, AL_LEFT);
+      break;
+    }
+    case 3: {   /* CLUTTER 100: FIRE MARSHAL. */
+      float v = 100 * lin(lt, 0.3f, 1.9f);
+      bool out = lt >= 2.3f;
+      if (out) hud_set_alpha(120);
+      hud_eyebrow(X + 40, Y + 60, "CLUTTER", C_BONE, AL_LEFT);
+      hud_bar(X + 40, Y + 90, 600, 40, v / 100, v > 80 ? C_FAULT : v > 55 ? C_RUST : C_HAZARD, C_CHAR);
+      hud_rect(X + 20, Y + 238, 640, 3, C_STEEL_HI, 255);
+      static const int at[4] = { 15, 35, 55, 75 }, ix[4] = { 60, 200, 340, 520 }, kind[4] = { 2, 2, 3, 2 };
+      for (int k = 0; k < 4; k++) {
+        if (v < at[k]) continue;
+        float t0 = 0.3f + 1.6f * at[k] / 100.f;
+        float d = hud_ease_out(fminf(1, (lt - t0) / 0.15f));
+        hud_pict_item(X + ix[k], Y + 200 + (int)(20 * d), kind[k], kind[k] == 3 ? C_FAULT : C_RUST);
+      }
+      if (v >= 100) {
+        float since = lt - 1.9f;
+        int sc = since < 0.1f ? 5 : 4;
+        hud_glyph(X + 600 - (sc - 4) * 8, Y + 40 - (sc - 4) * 8, GL_MARSHAL, sc, C_FAULT, 255);
+      }
+      if (out) hud_set_alpha(255);
+      break;
+    }
+    case 4: {   /* SAY HI OR THEY LEAVE. */
+      bool hi = lt >= 1.7f;
+      float frac = hi ? 1 : 1 - 0.7f * lin(lt, 0, 1.6f);
+      hud_pict_person(X + 480, Y + 150, 72, 0, true);
+      hud_circle(X + 504, Y + 120, 20, C_CHAR, 235);
+      hud_ring(X + 504, Y + 120, 20, 5, frac, hi ? C_BONE : frac < 0.35f ? C_FAULT : C_LIVE, 255);
+      if (hi) hud_glyph(X + 488, Y + 104, GL_CHECK, 2, C_LIVE, 255);
+      else hud_text(F_H3, X + 504, Y + 104, "?", C_BONE, 255, AL_CENTER);
+      int px = X + 120 + (int)(300 * hud_ease_inout(lin(lt, 0.4f, 1.6f)));
+      hud_pict_person(px, Y + 150, 72, PCOL[0], false);
+      if (hi) {
+        float w = lt - 1.7f;
+        int wob = w < 0.5f ? (int)(4 * sinf(w * 6.2832f * 8)) : 0;
+        hud_glyph(X + 440 + wob, Y + 90, GL_HAND, 3, PCOL[0], 255);
+        flash_pop(X + 504, Y + 60, "+100 KARMA", C_LIVE, w);
+      }
+      break;
+    }
+  }
+}
+
+static void rules_flash(void) {
+  float end = M.flash_end > 0 ? 1 - M.flash_end / 0.25f : 0;   /* 0..1 as it drops away */
+  int drop = (int)(40 * hud_ease_out(end));
+  int base = (int)(255 * (1 - end));
+  hud_rect(0, 0, HUD_W, HUD_H, C_CHAR, (int)(120 * (1 - end)));
+  hud_set_alpha(base);
+  int cy = 110 + drop;
+  hud_rect(260 + 8, cy + 8, 760, 440, C_SHADOW, 255);
+  hud_panel(260, cy, 760, 440, C_SLAB, C_STEEL_HI);
+  hud_tape(262, cy + 2, 756, 24, T * 30);
+  /* the wipe: out to the left over 0.15 s, in from the right over 0.15 s */
+  int ox = 0, a = 255;
+  if (M.flash_wipe > 0) {
+    float w = 0.3f - M.flash_wipe;   /* 0..0.3 elapsed; the step changed at 0.15 */
+    if (w < 0.15f) { ox = -(int)(60 * w / 0.15f); a = (int)(255 * (1 - w / 0.15f)); }
+    else { ox = (int)(60 * (1 - (w - 0.15f) / 0.15f)); a = (int)(255 * (w - 0.15f) / 0.15f); }
+  }
+  int step = M.flash_step > 4 ? 4 : M.flash_step;
+  float lt = M.flash_wipe > 0 && 0.3f - M.flash_wipe < 0.15f ? 2.6f : M.flash_t;
+  hud_set_alpha(a * base / 255);
+  hud_clip(300, 150 + drop, 680, 300);
+  flash_card(step, lt, ox);
+  if (step == 3 && lt >= 1.9f && lt < 2.5f && fmodf(lt - 1.9f, 0.5f) < 0.25f) hud_frame(260, cy, 760, 440, 12, C_FAULT, 255);
+  hud_clip_clear();
+  hud_text_runs(F_H2, 640 + ox, 482 + drop, FLASH_CAPS[step], 255, AL_CENTER);
+  hud_set_alpha(base);
+  hud_steps(640, 528 + drop, 5, step, M.flash_wipe > 0 ? 0 : fminf(1, M.flash_t / 2.6f));
+  /* the keys, centred under the card */
+  const char *ca = seat_cap(M.owner, 0), *cb = seat_cap(M.owner, 1);
+  const char *la = step == 4 ? "DONE" : "NEXT";
+  int w = hud_text_w(F_MONO_S, ca) + 14 + 8 + hud_text_w(F_MONO_S, la) + 24 + hud_text_w(F_MONO_S, cb) + 14 + 8 + hud_text_w(F_MONO_S, "SKIP");
+  int x = 640 - w / 2;
+  x = footer_hint(x, 572 + drop, ca, la);
+  footer_hint(x, 572 + drop, cb, "SKIP");
+  hud_set_alpha(255);
+}
+
 static void front_end(float dt) {
   int scrim = 70;
   if (M.screen == SCR_ATTRACT) scrim = (int)(70 * (1 - fminf(1, M.t / 0.5f)));
@@ -823,6 +1059,7 @@ static void front_end(float dt) {
     case SCR_TITLE: break;
     case SCR_ATTRACT: attract_screen(); break;
     case SCR_MAIN: menu_main(dt); break;
+    case SCR_FLASH: rules_flash(); break;
     default: menu_unbuilt(); break;
   }
 }
@@ -977,7 +1214,7 @@ static void lobby_overlay(float dt) {
   hud_text(F_H3, 346, 26, MODE_LOBBY_NAMES[mode], C_BONE, 255, AL_LEFT);
   int li = mode == MODE_CHAOS ? 0 : SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1;
   hud_text(F_MONO_S, 914, 36, NIGHT_LENS[li].name, C_ASH, 255, AL_RIGHT);
-  if (phones_on()) join_strip(944, 6);
+  join_strip_k(0);
   /* doors open in: a chip and a tape that shrinks from the right */
   if (M.ready_t <= 0 && G.wipe_t <= 0) {
     int left = (int)ceilf(M.lobby_t);
@@ -1123,6 +1360,9 @@ void draw_hud(float dt) {
   if (G.phase == PH_NIGHT) reserve(0, HUD_H - 86, HUD_W, 86);   /* the player cards */
   else reserve(0, 570, HUD_W, 150);          /* the lobby seat cards */
   reserve(960, 104, 304, 52);                /* the toasts */
+  int tw = toasts_widest();
+  if (tw > 286) reserve(1264 - tw, 104, tw, 52);
+  coach_step();                              /* G.coach_st for the ash guides */
   goal_guides();
   station_labels();
   floor_tags();
@@ -1130,7 +1370,7 @@ void draw_hud(float dt) {
   fx_draw(dt);
   top_bar();
   if (G.phase == PH_LOBBY) lobby_overlay(dt);
-  else join_strip(944, 6);
+  else { mode_panel(); join_strip(); }
   if (!danger()) { ticker_band(); if (G.ticker_t <= 0) coach(); }
   if (G.phase == PH_NIGHT) player_cards();
   toasts(1264, 108);
@@ -1138,5 +1378,6 @@ void draw_hud(float dt) {
   players_overlay();
   if (G.phase == PH_NIGHT) countdown();
   start_wipe();
+  if (M.screen == SCR_FLASH) rules_flash();
   fx2_draw(dt);
 }

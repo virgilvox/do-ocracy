@@ -56,10 +56,10 @@ The two keyboard players read raw keys, which the browser player delivers. Under
 - Whatever you are carrying gets arrows on the floor, a highlight in your colour on the place it goes, and a short label over your head ("TO SHOW & TELL", "TO THE TRASH").
 - Under your feet is a prompt with your own button on it: A for a pad, SPACE or . for the keyboard.
 - Every station has an amber edge if it makes clout or a teal edge if it is karma work, and a red ! when something is wrong there.
-- Messes on the floor get a ring and a label (SWEEP ME, MOP ME, UNPLUG ME). Junk says TRASH ME. Newbies say SAY HI, then LEAVING!
-- The first forty seconds of every night, a coach card walks through the five things to know.
+- Messes on the floor get a ring. On a group's first night it says SWEEP ME or MOP ME; after that a broom sits on the ring. A daisy chain always says UNPLUG ME. Anything left too long gets one RED TAG label instead of its name. A newbie shows a ? with a patience ring and says SAY HI only when it is about to leave.
+- Before the first night a rules flash plays five picture cards (A for the next card, B to skip); HOW TO PLAY on the menu plays it any time. Then a coach line runs over the first forty seconds, with grey arrows toward the station it names. The HELP setting turns both off or on every night.
 - Holding a button fills the prompt under your feet, so you can see your progress wherever you stand. Player markers draw on top of everything.
-- The clock counts down the time left in the night, with a progress bar marked in hours. Messages get their own strip under the top row, above the room, so they never cover the floor.
+- The clock counts down the time left in the night in big digits, the wall clock small beside it, over a progress bar marked in hours. CLUTTER carries the fire marshal's helmet and VIBE a heart; the phone join strip shrinks to its QR and code after 45 seconds (CO-OP and VERSUS put TEAM KARMA or the LEADER there instead). Station names stay dim until you are near one or it needs you. Messages get their own strip under the top row, above the room, so they never cover the floor.
 - Labels in the room never stack: each one moves to the nearest free spot.
 - Every event banner says what it means ("HABOOB! Dust on the floor and in the laser. Sweep it.").
 - The title shows the room behind a light scrim with nine strings at most; after 20 idle seconds the attract screen runs the floor loop tips. The lobby shows one seat card per player along the bottom, with the bots a solo night will add.
