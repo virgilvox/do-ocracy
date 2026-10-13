@@ -146,6 +146,12 @@ static const char *const TOAST_DISHES    = "DISHES DONE. THE MOST IMPORTANT MACH
 static const char *const TOAST_FIRST_HI  = "YOU SAID HI. YOU ARE THE FRONT DESK NOW.";   /* a player's first greeting */
 static const char *const TOAST_MATE      = "CLUB-MATE. AN ACQUIRED TASTE. NOBODY HAS.";  /* a player's first bottle */
 static const char *const TOAST_CUT       = "CUT DONE. THE QUEUE WOULD LIKE A WORD.";     /* the laser finishes */
+static const char *const TOAST_VEND_ATE  = "IT ATE A DOLLAR. AGAIN. ROCK IT.";            /* the vending machine jams on a purchase */
+static const char *const TOAST_VEND_ROCK = "THE HONOUR JAR HAS A NOTE AND A WASHER.";     /* rocked loose */
+static const char *const TOAST_WIPED     = "WHITEBOARD WIPED. %d COMMITTEES DISSOLVED.";  /* one %d: the lines wiped */
+static const char *const TOAST_CORNER    = "YOU WIPED THE CORNER. IT SAID DO NOT ERASE. DATED 2019.";
+static const char *const TOAST_SEWING    = "SOMEBODY IS SEWING. THE ROOM LOOKS FRIENDLIER.";  /* first sewing of the night */
+static const char *const TOAST_BATH      = "BATHROOM DONE. +KARMA. NO WITNESSES.";        /* the longest hold, finished */
 
 /* The event table, 25 rows in the order of docs/design/FINAL-space.md 5.15;
  * the night script's weight column and game.c's effect list index into it.

@@ -48,6 +48,10 @@ static float hold_time(int kind, int ref) {
     case W_BENCH: return 3.2f;
     case W_DISH: return 0.7f;
     case W_FRIDGE: return 2.2f;
+    case W_ROCK: return 1.6f;
+    case W_WIPE: return 1.8f;
+    case W_SEW: return 1.6f;
+    case W_BATH: return 3.0f;   /* the longest hold in the game */
     case W_FLOOR: return I[ref].type == IT_DAISY ? 2.0f : I[ref].type == IT_PUDDLE ? 1.5f : 1.2f;
     default: return 0;
   }
@@ -89,7 +93,7 @@ const char *item_name(const item_t *it) {
     case IT_PLYWOOD: return "PLYWOOD";
     case IT_PROJECT:
       return it->kind == 0 ? LASER_PROJECTS[it->name] : it->kind == 1 ? PRINT_PROJECTS[it->name]
-           : it->kind == 2 ? BENCH_PROJECTS[it->name] : STICKERS[it->name];
+           : it->kind == 2 ? BENCH_PROJECTS[it->name] : it->kind == 4 ? SEWING_PROJECTS[it->name] : STICKERS[it->name];
     case IT_SCRAP: return "PLYWOOD SCRAP";
     case IT_BOTTLE: return "EMPTY CLUB-MATE";
     case IT_SPAGHETTI: return "PRINT SPAGHETTI";
@@ -152,6 +156,7 @@ static void give(player_t *p, int item) {
 }
 
 static bool adding_bot;
+static bool sewing_seen;   /* the first sewing toast of the night */
 static void clear_world(void);
 static void calm_meters(void);
 
@@ -481,7 +486,17 @@ static cand_t find_target(player_t *p) {
       case ST_SINK: if (s->count > 0) consider(&c, W_DISH, i, d, "WASH A DISH", true); break;
       case ST_FRIDGE:
         if (s->smell) consider(&c, W_FRIDGE, i, d, "DEAL WITH THE FRIDGE", true);
-        else if (p->boost <= 0 && !L->night.fridge_locked) consider(&c, W_MATE, i, d, "DRINK A CLUB-MATE", false);
+        else if (p->boost <= 0 && !L->night.fridge_locked) consider(&c, W_MATE, i, d, "GRAB A DRINK", false);
+        break;
+      case ST_VEND:
+        if (s->state == S_BROKEN) consider(&c, W_ROCK, i, d, "ROCK IT", true);
+        else if (p->boost <= 0) consider(&c, W_MATE, i, d, "BUY A DRINK", false);
+        break;
+      case ST_BOARD: if (s->count > 0) consider(&c, W_WIPE, i, d, "WIPE THE BOARD", true); break;
+      case ST_SEWING: consider(&c, W_SEW, i, d, "SEW SOMETHING", false); break;
+      case ST_BATH:
+        if (s->timer >= 50) consider(&c, W_BATH, i, d, "CLEAN THE BATHROOM", true);
+        else if (s->count) consider(&c, W_LIGHT, i, d, "LIGHT OFF", true);
         break;
       default: break;
     }
@@ -500,12 +515,14 @@ static int project_value(int kind) {
     case 0: return 900 + (int)(rnd() % 300);
     case 1: return 600 + (int)(rnd() % 200);
     case 2: return 450 + (int)(rnd() % 150);
+    case 4: return 300 + (int)(rnd() % 100);
     default: return 150;
   }
 }
 
 static int make_project(player_t *p, int kind) {
-  int n = kind == 0 ? COUNT(LASER_PROJECTS) : kind == 1 ? COUNT(PRINT_PROJECTS) : kind == 2 ? COUNT(BENCH_PROJECTS) : COUNT(STICKERS);
+  int n = kind == 0 ? COUNT(LASER_PROJECTS) : kind == 1 ? COUNT(PRINT_PROJECTS) : kind == 2 ? COUNT(BENCH_PROJECTS)
+        : kind == 4 ? COUNT(SEWING_PROJECTS) : COUNT(STICKERS);
   int it = spawn_item(IT_PROJECT, p->x, p->z, kind, (int)(rnd() % n));
   if (it >= 0) { I[it].value = project_value(kind); give(p, it); }
   return it;
@@ -612,6 +629,45 @@ static void act(player_t *p, int kind, int ref) {
       if (p->mates == 1 && !p->bot) game_toast(TOAST_MATE, C_HAZARD);
       pop(p, C_HAZARD, "SPEED", 0);
       audio_play(SFX_SLURP);
+      if (ref == ST_VEND && rnd() % 4 == 0) {   /* the drink came out; the next dollar will not */
+        s->state = S_BROKEN;
+        game_toast(TOAST_VEND_ATE, C_RUST);
+        audio_play(SFX_BAD);
+      }
+      break;
+    case W_ROCK:
+      s->state = S_IDLE;
+      karma(p, 35);
+      p->boost = 7; p->mates++; p->owes_bottle = true;   /* and the drink comes out */
+      game_toast(TOAST_VEND_ROCK, C_INK_OK);
+      fx_burst(FX_SPARK, s->x + s->hw, 1.2f, s->z, C_BONE);
+      break;
+    case W_WIPE:
+      karma(p, 20 + 10 * s->count);
+      p->wiped++;
+      if (s->dust > 0 && rnd() % 5 == 0) {
+        s->dust = 0; G.vibe -= 4;
+        game_toast(TOAST_CORNER, C_INK_ERR);
+      } else {
+        snprintf(msg, sizeof msg, TOAST_WIPED, s->count);
+        game_toast(msg, C_INK_OK);
+      }
+      s->count = 0;
+      break;
+    case W_SEW:
+      make_project(p, 4);
+      p->sewn++;
+      audio_play(SFX_PICKUP);
+      break;
+    case W_LIGHT:
+      s->count = 0;
+      karma(p, 10);
+      break;
+    case W_BATH:
+      s->timer = 0; s->count = 0;
+      karma(p, 150);
+      p->baths++;
+      game_toast(TOAST_BATH, C_INK_OK);
       break;
     case W_FRIDGE:
       s->smell = false;
@@ -676,7 +732,12 @@ static bool goal_valid(player_t *p) {
     case W_FIX: return p->hold < 0 && S[r].state == S_BROKEN;
     case W_DISH: return p->hold < 0 && S[ST_SINK].count > 0;
     case W_FRIDGE: return p->hold < 0 && S[ST_FRIDGE].smell;
-    case W_BENCH: case W_STICKER: return p->hold < 0;
+    case W_BENCH: case W_STICKER: case W_SEW: return p->hold < 0;
+    case W_ROCK: return p->hold < 0 && S[ST_VEND].state == S_BROKEN;
+    case W_WIPE: return p->hold < 0 && S[ST_BOARD].count > 0;
+    case W_LIGHT: return p->hold < 0 && S[ST_BATH].count && S[ST_BATH].timer < 50;
+    case W_BATH: return p->hold < 0 && S[ST_BATH].timer >= 50;
+    case W_LOITER: return p->hold < 0 && p->bot == BOT_TALKER && p->talk_in > 0 && S[ST_BOARD].present;
   }
   return false;
 }
@@ -727,6 +788,13 @@ static void choose_goal(player_t *p) {
   if (S[ST_CUTSALOT].present) WANT(W_STICKER, ST_CUTSALOT, 0.35f, true, S[ST_CUTSALOT].x, S[ST_CUTSALOT].z);
   if (S[ST_SINK].present && S[ST_SINK].count >= 2) WANT(W_DISH, ST_SINK, 0.5f + S[ST_SINK].count * 0.12f, false, S[ST_SINK].x, S[ST_SINK].z);
   if (S[ST_FRIDGE].present && S[ST_FRIDGE].smell) WANT(W_FRIDGE, ST_FRIDGE, 1.5f, false, S[ST_FRIDGE].x, S[ST_FRIDGE].z);
+  station_t *vd = &S[ST_VEND], *bd = &S[ST_BOARD], *sw = &S[ST_SEWING], *ba = &S[ST_BATH];
+  if (vd->present && vd->state == S_BROKEN) WANT(W_ROCK, ST_VEND, 1.0f, false, vd->x, vd->z);   /* bots never buy drinks */
+  if (bd->present && bd->count > 0) WANT(W_WIPE, ST_BOARD, 0.4f + 0.15f * bd->count, false, bd->x, bd->z);
+  if (bd->present && p->bot == BOT_TALKER) WANT(W_LOITER, ST_BOARD, 0.5f, false, bd->x, bd->z);   /* stands by the board and fills it */
+  if (sw->present) WANT(W_SEW, ST_SEWING, 0.5f, true, sw->x, sw->z);
+  if (ba->present && ba->timer >= 50) WANT(W_BATH, ST_BATH, 1.1f, false, ba->x, ba->z);
+  else if (ba->present && ba->count) WANT(W_LIGHT, ST_BATH, 0.3f, false, ba->x, ba->z);
   for (int i = 0; i < MAX_NPCS; i++)
     if (N[i].alive && N[i].state == 1) WANT(W_GREET, i, 1.6f, false, N[i].x, N[i].z);
 #undef WANT
@@ -748,6 +816,7 @@ static void goal_point(player_t *p, float *tx, float *tz) {
     case FACE_NX: *tx = s->x - s->hw - m; break;
     default: break;
   }
+  if (p->goal == W_LOITER) approach_point(r, m + 1.2f, tx, tz);   /* the board's approach point, 1.2 further out */
 }
 
 static void bot_think(player_t *p, float dt) {
@@ -777,7 +846,9 @@ static void bot_think(player_t *p, float dt) {
     /* arrived, but something else is at hand (a mess by the laser, junk on the
      * approach): deal with that first, or the goal never comes within reach */
     bool at_hand = !at_goal && dg < 0.15f && c.kind != W_NONE && c.kind != W_MATE;
-    if (at_goal || at_hand) {
+    if (p->goal == W_LOITER && dg < 0.3f && !at_hand) {
+      p->stuck = 0; p->stuck_total = 0;   /* standing at the board on purpose: talking */
+    } else if (at_goal || at_hand) {
       if (hold_time(c.kind, c.ref) > 0) b |= IN_A;
       else if (!(p->prev & IN_A)) b |= IN_A;
     } else {
@@ -843,6 +914,10 @@ static void player_update(player_t *p, float dt) {
     if (pressed_a && c.kind != W_NONE) act(p, c.kind, c.ref);
   }
   if (c.kind == W_CUT && working && S[ST_LASER].state == S_LOADED) G.laser_cutting = 0.1f;
+  if (c.kind == W_SEW && working) {
+    G.sewing = 0.3f;
+    if (!sewing_seen && G.phase == PH_NIGHT) { sewing_seen = true; game_toast(TOAST_SEWING, C_INK_OK); }
+  }
 
   if (c.kind != W_NONE) {
     snprintf(p->prompt, sizeof p->prompt, "%s", c.label);
@@ -854,6 +929,8 @@ static void player_update(player_t *p, float dt) {
     p->bubble = 2.4f; p->bubble_text = (int)(rnd() % COUNT(PROPOSALS)); p->proposals++;
     pop(p, C_SMOKE, "+0 CLOUT", 0);
     audio_play(SFX_TALK);
+    /* the idea goes on the whiteboard, whoever is listening */
+    if (S[ST_BOARD].present && box_dist(p->x, p->z, &S[ST_BOARD]) < 3.0f && S[ST_BOARD].count < 8) S[ST_BOARD].count++;
   }
 
   /* where the thing in your hands goes: drawn as an arrow, so nobody has to guess */
@@ -928,6 +1005,7 @@ static void spawn_newbie(void) {
       if (clear_spot(n->tx, n->tz, 0.8f)) break;
     }
     n->patience = L->night.patience;
+    if (S[ST_BATH].present) { S[ST_BATH].timer = fminf(100, S[ST_BATH].timer + 8); S[ST_BATH].count = 1; }   /* every newbie checks it first */
     n->obj = world_person(0x6f685c, true, &n->body);
     game_toast("A NEWBIE WALKED IN. SOMEBODY SAY HI.", C_BONE);
     return;
@@ -959,7 +1037,12 @@ static void npc_update(npc_t *n, float dt) {
       if (walk(n, dt, 2.4f) || n->work > 6) { n->state = 1; n->work = 0; }
       break;
     case 1:
-      if (G.phase == PH_NIGHT) n->patience -= dt;
+      if (G.phase == PH_NIGHT) {
+        float drain = 1;
+        if (G.sewing > 0) drain *= 0.5f;                                       /* somebody sewing: the room looks friendlier */
+        if (S[ST_BATH].present && S[ST_BATH].timer >= 70) drain *= 1.4f;     /* they checked the bathroom */
+        n->patience -= dt * drain;
+      }
       if (n->patience <= 0) {
         n->state = 4; n->tx = L->door_x; n->tz = L->door_z + 0.5f;
         G.vibe += L->night.leave_vibe;
@@ -1035,8 +1118,20 @@ enum { E_NONE, E_HEAT, E_HABOOB, E_TACOS, E_LANDLORD, E_DAISY, E_DONATION, E_STR
 /* the effect of each row the game has; the banner and sub are EVENT_TEXT[row] in content.h */
 static const int EVENTS[] = {
   E_NONE, E_NONE, E_NONE, E_HEAT, E_HABOOB, E_TACOS, E_LANDLORD, E_DAISY, E_DONATION, E_STRANGE,
-  E_FRIDGE, E_SPAGHETTI, E_COFFEE,
+  E_FRIDGE, E_SPAGHETTI, E_COFFEE, E_THREAD, E_LABELS, E_PURGE, E_NOSTALGIA, E_BATH, E_FLAT, E_BIN,
+  E_TOUR, E_DRAIN, E_DOOR, E_VEND, E_NONE,
 };
+/* the effects the game can play so far; a row whose effect is not here yet,
+ * or whose station the level lacks, weighs nothing */
+static bool event_ready(int row) {
+  switch (EVENTS[row]) {
+    case E_THREAD: case E_LABELS: case E_PURGE: case E_NOSTALGIA: case E_FLAT: case E_BIN: case E_TOUR:
+    case E_DRAIN: case E_DOOR: return false;
+    case E_BATH: return S[ST_BATH].present;
+    case E_VEND: return S[ST_VEND].present;
+    default: return true;
+  }
+}
 
 static void spawn_donation(void) {
   int d = (int)(rnd() % COUNT(DONATIONS));
@@ -1053,7 +1148,7 @@ static bool floor_spot(float *x, float *z) { return spot_in(&L->spot_box, 0.6f, 
 /* the events that hurt; CALM and CHAOS scale their weights by G.badmul */
 static bool bad_event(int eff) {
   return eff == E_HEAT || eff == E_HABOOB || eff == E_DAISY || eff == E_DONATION ||
-         eff == E_STRANGE || eff == E_FRIDGE || eff == E_SPAGHETTI || eff == E_LANDLORD;
+         eff == E_STRANGE || eff == E_FRIDGE || eff == E_SPAGHETTI || eff == E_LANDLORD || eff == E_BATH || eff == E_VEND;
 }
 
 static int gcd(int a, int b) { while (b) { int t = a % b; a = b; b = t; } return a; }
@@ -1066,7 +1161,7 @@ static int pick_event(void) {
   int w[EVENT_ROWS], total = 0, g = 0;
   int bad10 = (int)(G.badmul * 10 + 0.5f);
   for (int i = 0; i < n; i++) {
-    w[i] = L->night.weight[i] * (bad_event(EVENTS[i]) ? bad10 : 10);
+    w[i] = event_ready(i) ? L->night.weight[i] * (bad_event(EVENTS[i]) ? bad10 : 10) : 0;
     if (w[i] < 0) w[i] = 0;
     g = gcd(g, w[i]);
   }
@@ -1133,6 +1228,10 @@ static void fire_event(void) {
       break;
     }
     case E_COFFEE: G.vibe = fminf(100, G.vibe + 6); break;
+    case E_BATH:
+      if (S[ST_BATH].present) { S[ST_BATH].timer = fmaxf(S[ST_BATH].timer, 70); S[ST_BATH].count = 1; }
+      break;
+    case E_VEND: if (S[ST_VEND].present) S[ST_VEND].state = S_BROKEN; break;
     default: break;
   }
 }
@@ -1176,6 +1275,11 @@ void game_start_night(void) {
   G.coach_st = -1; G.team_karma = 0; G.newbies_seen = G.newbies_greeted = 0; G.end_variant = 0;
   G.nights++;
   S[ST_SINK].count = nt->start_dishes;
+  S[ST_BOARD].count = 0; S[ST_BOARD].dust = 1;   /* the DO NOT ERASE corner, intact */
+  /* the bathroom: CLASSIC and HABOOB start at 20 plus up to 30 more; the other scripts give a fixed value */
+  S[ST_BATH].timer = nt->start_bath + (nt->start_bath == 20 ? frnd() * 30 : 0);
+  S[ST_BATH].count = S[ST_BATH].timer > 0;
+  G.sewing = 0; sewing_seen = false;
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &P[i];
     if (!p->active) continue;
@@ -1260,6 +1364,7 @@ void game_update(float dt) {
     }
   }
   if (G.laser_cutting > 0) G.laser_cutting -= dt;
+  if (G.sewing > 0) G.sewing -= dt;
   if (S[ST_SHOW].timer > 0) S[ST_SHOW].timer -= dt;
 
   for (int i = 0; i < MAX_ITEMS; i++) if (I[i].alive && I[i].holder < 0) I[i].age += dt;
@@ -1286,6 +1391,7 @@ void game_update(float dt) {
   if ((G.next_donation -= dt) <= 0) { spawn_donation(); G.next_donation = (nt->donation_gap + frnd() * nt->donation_jit) * G.pace; }
 
   dt /= rush;
+  if (S[ST_BATH].present) S[ST_BATH].timer = fminf(100, S[ST_BATH].timer + 0.4f * dt);   /* dirtiness, on real time */
   if (G.landlord > 0) {
     G.landlord -= dt;
     if (G.landlord <= 0) {
@@ -1301,6 +1407,9 @@ void game_update(float dt) {
   if (S[ST_FRIDGE].present && S[ST_FRIDGE].smell) c += 12;
   if (S[ST_LASER].present && S[ST_LASER].state == S_BROKEN) c += 6;
   for (int k = ST_PRINT1; k <= ST_PRINT2; k++) if (S[k].present && S[k].state == S_BROKEN) c += 4;
+  if (S[ST_VEND].present && S[ST_VEND].state == S_BROKEN) c += 3;
+  if (S[ST_BOARD].present) c += S[ST_BOARD].count * 1.5f;
+  if (S[ST_BATH].present) c += S[ST_BATH].timer / 12;
   G.clutter += (c - G.clutter) * fminf(1, dt * 3);
   if (G.clutter > 60) G.vibe -= dt * (G.clutter - 60) / 40.f * 2.0f;
   else if (G.clutter < 25) G.vibe = fminf(100, G.vibe + dt * nt->vibe_heal);

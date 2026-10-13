@@ -37,6 +37,7 @@ static t3_object *built[1024]; static int built_n;
 static t3_texture *tex[64]; static int tex_n;
 static t3_material *owned[96]; static int owned_n;
 static t3_object *fans[8]; static int fan_n;
+static t3_mesh *board_line[8], *board_corner[2];   /* the whiteboard's marker lines and its DO NOT ERASE corner */
 
 static void *keep(void *o) {
   if (o && built_n < (int)(sizeof built / sizeof built[0])) built[built_n++] = o;
@@ -720,8 +721,64 @@ static void build_stations(void) {
   BOX(g, m_pcb, 0.4f, 0.03f, 0.3f, -0.3f, 0.97f, 0.3f);
   for (int k = 0; k < 3; k++) { grey_chair(g, -1.2f + k * 1.2f, 0.55f, 3.1415927f); grey_chair(g, -1.2f + k * 1.2f, -0.55f, 0); }
 
-  /* the ten new stations are parked until their models land (work items 6 to 12) */
-  for (int i = ST_VEND; i < ST_COUNT; i++) {
+  /* the vending machine against the west wall: its lit front is the silhouette */
+  s = &S[ST_VEND]; g = station_group(s);
+  BOX(g, m_steel, 0.6f, 1.9f, 1.0f, 0, 0.95f, 0);
+  s->light = noshadow(BOX(g, keep_mat(emis(0x8fbde6, 1.2f)), 0.02f, 1.2f, 0.7f, 0.31f, 1.15f, -0.05f));   /* front panel, +x */
+  for (int k = 0; k < 6; k++)                                                            /* the drinks, two rows of three */
+    noshadow(CYL(g, m_bottle, 0.05f, 0.18f, 0.37f, k < 3 ? 1.45f : 1.05f, -0.25f + (k % 3) * 0.2f));
+  BOX(g, m_char, 0.02f, 0.1f, 0.06f, 0.31f, 1.05f, 0.4f);                                 /* coin slot */
+  noshadow(CYL(g, m_screen, 0.08f, 0.12f, 0, 1.96f, 0.25f));                              /* the honour jar */
+  noshadow(BOX(g, m_bone, 0.1f, 0.08f, 0.005f, 0, 1.97f, 0.25f));                         /* and the note in it */
+
+  /* the rolling whiteboard: the eight marker lines come first after the frame
+   * (children 4..11) so world_sync can show the first count of them */
+  s = &S[ST_BOARD]; g = station_group(s);
+  BOX(g, m_white, 1.3f, 0.9f, 0.04f, 0, 1.4f, 0);
+  BOX(g, m_steel_hi, 0.04f, 1.9f, 0.04f, -0.6f, 0.95f, -0.04f);
+  BOX(g, m_steel_hi, 0.04f, 1.9f, 0.04f, 0.6f, 0.95f, -0.04f);
+  BOX(g, m_steel_hi, 1.3f, 0.04f, 0.3f, 0, 0.1f, -0.04f);                                 /* foot bar */
+  for (int k = 0; k < 8; k++) {
+    board_line[k] = noshadow(BOX(g, k & 1 ? m_rust : m_info, 0.9f - (k % 3) * 0.15f, 0.03f, 0.012f, -0.15f - (k % 3) * 0.075f, 1.72f - 0.1f * k, 0.026f));
+    board_line[k]->base.visible = false;
+  }
+  board_corner[0] = noshadow(BOX(g, m_rust, 0.3f, 0.2f, 0.012f, 0.45f, 1.72f, 0.026f));  /* DO NOT ERASE */
+  board_corner[1] = sign_on(g, plaque(64, 32, C_RUST, C_BONE, F_MONO_S, "DO NOT\nERASE"), 0.26f, 0.13f, 0.45f, 1.72f, 0.034f, 0);
+  BOX(g, m_char, 1.36f, 0.04f, 0.06f, 0, 1.87f, 0);                                     /* a dark frame, so white reads on white tile */
+  BOX(g, m_char, 1.36f, 0.04f, 0.06f, 0, 0.93f, 0);
+  BOX(g, m_char, 0.04f, 0.94f, 0.06f, -0.66f, 1.4f, 0);
+  BOX(g, m_char, 0.04f, 0.94f, 0.06f, 0.66f, 1.4f, 0);
+  noshadow(BOX(g, m_char, 1.0f, 0.03f, 0.06f, 0, 0.9f, 0.05f));                          /* marker tray */
+  for (int k = 0; k < 4; k++)
+    rot(noshadow(part(g, g_disc, m_char, 0.05f, 0.03f, 0.05f, k & 1 ? 0.6f : -0.6f, 0.05f, k & 2 ? 0.1f : -0.18f)), 0, 0, 1.5707963f);
+
+  /* sewing: a white table along the west wall, the green Consew with its needle lamp, a second machine, the thread rack */
+  s = &S[ST_SEWING]; g = station_group(s);
+  BOX(g, m_white, 0.8f, 0.05f, 1.4f, 0, 0.76f, 0);
+  for (int k = 0; k < 4; k++) BOX(g, m_steel_hi, 0.04f, 0.74f, 0.04f, k & 1 ? 0.35f : -0.35f, 0.37f, k & 2 ? 0.65f : -0.65f);
+  BOX(g, m_green, 0.25f, 0.35f, 0.5f, -0.05f, 0.96f, -0.3f);                             /* the Consew */
+  BOX(g, m_char, 0.1f, 0.3f, 0.1f, 0.03f, 0.93f, -0.05f);                                /* its arm and needle bar */
+  rot(part(g, g_disc, m_steel_hi, 0.12f, 0.03f, 0.12f, -0.05f, 1.02f, -0.57f), 1.5707963f, 0, 0);   /* hand wheel */
+  s->light = noshadow(part(g, g_sphere, keep_mat(emis(0xfff0d0, 0.4f)), 0.03f, 0.03f, 0.03f, 0.1f, 0.86f, -0.05f));
+  BOX(g, m_bone, 0.2f, 0.3f, 0.4f, -0.05f, 0.93f, 0.35f);                                /* the second machine */
+  {
+    t3_material *th[6] = { m_rust, m_info, m_cord, m_green, m_violet, m_bone };
+    BOX(g, m_wood, 0.06f, 0.04f, 0.6f, -0.3f, 1.25f, 0);
+    for (int k = 0; k < 6; k++) noshadow(CYL(g, th[k], 0.02f, 0.1f, -0.3f, 1.32f, -0.25f + k * 0.1f));
+  }
+  grey_chair(g, 0.3f, 0, -1.5707963f);
+
+  /* the bathroom: a bone door in the back wall, a frame, the handle, the tube over it */
+  s = &S[ST_BATH]; g = station_group(s);
+  BOX(g, m_bone, 0.9f, 2.1f, 0.04f, 0, 1.05f, -0.11f);                                  /* just proud of the painted wall at z -6.995 */
+  BOX(g, m_char, 0.08f, 2.2f, 0.1f, -0.49f, 1.1f, -0.1f);
+  BOX(g, m_char, 0.08f, 2.2f, 0.1f, 0.49f, 1.1f, -0.1f);
+  BOX(g, m_char, 1.06f, 0.08f, 0.1f, 0, 2.2f, -0.1f);
+  BOX(g, m_steel_hi, 0.12f, 0.04f, 0.06f, 0.32f, 1.0f, -0.07f);                          /* handle */
+  s->light = noshadow(BOX(g, keep_mat(emis(0xfff6e0, 0)), 0.6f, 0.05f, 0.05f, 0, 2.32f, -0.08f));
+
+  /* the rest of the new stations are parked until their models land (work items 10 to 12) */
+  for (int i = ST_STORAGE; i < ST_COUNT; i++) {
     s = &S[i]; g = station_group(s);
     BOX(g, m_grey, s->hw * 2, 0.8f, s->hd * 2, 0, 0.4f, 0);
   }
@@ -1271,6 +1328,7 @@ t3_object *world_item_obj(int type, int kind) {
       if (kind == 0) { BOX(g, m_amber, 0.5f, 0.45f, 0.5f, 0, 0.225f, 0); BOX(g, m_char, 0.3f, 0.1f, 0.3f, 0, 0.5f, 0); }
       else if (kind == 1) part(g, g_knot, m_amber, 0.2f, 0.2f, 0.2f, 0, 0.28f, 0);
       else if (kind == 2) { BOX(g, m_pcb, 0.5f, 0.05f, 0.4f, 0, 0.1f, 0); part(g, g_sphere, m_led, 0.08f, 0.08f, 0.08f, 0, 0.18f, 0); }
+      else if (kind == 4) { BOX(g, m_violet, 0.5f, 0.12f, 0.4f, 0, 0.07f, 0); BOX(g, m_bone, 0.06f, 0.13f, 0.42f, 0.1f, 0.075f, 0); }
       else BOX(g, m_amber, 0.4f, 0.03f, 0.4f, 0, 0.1f, 0);
       break;
     case IT_SCRAP: {
@@ -1429,6 +1487,17 @@ void world_sync(float dt) {
   float sm = F->smell ? 0.22f + 0.05f * sinf(t * 6) : 0;
   t3_object_set_scale(F->light, sm, sm, sm);
   glow(F->light, 0x7fb800, 2);
+  /* vending: the lit front, flickering fault red while it has eaten a dollar */
+  station_t *vd = &S[ST_VEND];
+  if (vd->state == S_BROKEN) glow(vd->light, C_FAULT, fmodf(t, 0.17f) < 0.08f ? 1.6f : 0.2f);
+  else glow(vd->light, 0x8fbde6, 1.2f);
+  /* whiteboard: one marker line per idea, the corner until somebody wipes it */
+  for (int k = 0; k < 8; k++) if (board_line[k]) board_line[k]->base.visible = k < S[ST_BOARD].count;
+  for (int k = 0; k < 2; k++) if (board_corner[k]) board_corner[k]->base.visible = S[ST_BOARD].dust > 0;
+  /* sewing: the needle lamp brightens while somebody sews */
+  glow(S[ST_SEWING].light, 0xfff0d0, G.sewing > 0 ? 2.0f : 0.4f);
+  /* bathroom: the tube over the door is the light somebody left on */
+  glow(S[ST_BATH].light, 0xfff6e0, S[ST_BATH].count ? 2.5f : 0);
   /* show window pedestal: the last thing shown, spinning */
   station_t *sh = &S[ST_SHOW];
   sh->growth->base.visible = sh->timer > 0;

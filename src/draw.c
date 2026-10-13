@@ -167,7 +167,8 @@ static float label_height(int i) {
     case ST_BATH: return 2.2f;
     case ST_LUMBER: return 2.1f;
     case ST_PRINT1: case ST_PRINT2: case ST_STORAGE: return 2.0f;
-    case ST_BOARD: case ST_LASER: return 1.9f;
+    case ST_BOARD: return 2.6f;   /* above the board, so the lines show under the name */
+    case ST_LASER: return 1.9f;
     case ST_FORGE: return 1.6f;
     default: return 1.3f;
   }
@@ -205,6 +206,23 @@ static void station_labels(void) {
         break;
       case ST_FRIDGE:
         if (s->smell) { snprintf(st, sizeof st, "SMELLS. HOLD TO CLEAN"); c = C_INK_ERR; alarm = true; pay = 2; }
+        else if (L->night.fridge_locked) snprintf(st, sizeof st, "LOCKED");
+        break;
+      case ST_VEND:
+        if (s->state == S_BROKEN) { snprintf(st, sizeof st, "ATE A DOLLAR"); c = C_INK_ERR; alarm = true; pay = 2; }
+        break;
+      case ST_BOARD:
+        pay = 2;
+        if (s->count >= 4) { snprintf(st, sizeof st, "%d LINES", s->count); c = s->count >= 8 ? C_INK_ERR : C_ASH; alarm = s->count >= 8; }
+        break;
+      case ST_SEWING:
+        pay = 1;
+        if (G.sewing > 0) snprintf(st, sizeof st, "SOMEBODY IS SEWING");
+        break;
+      case ST_BATH:
+        pay = 2;
+        if (s->timer >= 50) { snprintf(st, sizeof st, "NEEDS A HERO"); c = s->timer >= 70 ? C_INK_ERR : C_ASH; alarm = s->timer >= 70; }
+        else if (s->count) snprintf(st, sizeof st, "LIGHT ON");
         break;
       case ST_TRASH: case ST_FREEPILE: pay = 2; break;
     }
@@ -1438,7 +1456,7 @@ static const end_variant_t *end_variant(void) {
 static void results_awards(const int *order, int n, const char **aname, char award[][72]) {
   for (int i = 0; i < MAX_PLAYERS; i++) { aname[i] = NULL; award[i][0] = 0; }
   int top_k = -1, top_c = -1, top_t = -1, top_g = -1, top_m = -1, low = -1;
-  int top_s = -1, top_f = -1, top_u = -1, top_d = -1;
+  int top_s = -1, top_f = -1, top_u = -1, top_d = -1, top_b = -1;
   for (int j = 0; j < n; j++) {
     int i = order[j];
     if (top_k < 0 || P[i].karma > P[top_k].karma) top_k = i;
@@ -1450,6 +1468,7 @@ static void results_awards(const int *order, int n, const char **aname, char awa
     if (top_f < 0 || P[i].fixes > P[top_f].fixes) top_f = i;
     if (top_u < 0 || P[i].unplugged > P[top_u].unplugged) top_u = i;
     if (top_d < 0 || P[i].dishes > P[top_d].dishes) top_d = i;
+    if (top_b < 0 || P[i].baths > P[top_b].baths) top_b = i;
     if (low < 0 || P[i].tasks + P[i].clout / 500 < P[low].tasks + P[low].clout / 500) low = i;
   }
   #define AW(k, cond, nm, ...) if ((k) >= 0 && !aname[k] && (cond)) { aname[k] = nm; snprintf(award[k], 72, __VA_ARGS__); }
@@ -1457,6 +1476,7 @@ static void results_awards(const int *order, int n, const char **aname, char awa
   AW(top_c, P[top_c].clout > 0, "GLAMOUR BIAS", "%s", AWARD_GLAMOUR)
   AW(top_t, P[top_t].proposals >= 3, "TALKER", AWARD_TALKER, P[top_t].proposals)
   AW(top_g, P[top_g].greeted >= 2, "GREETER", AWARD_GREETER, P[top_g].greeted)
+  AW(top_b, P[top_b].baths >= 1, "NO WITNESSES", AWARD_WITNESS, P[top_b].baths)
   AW(top_m, P[top_m].mates >= 3, "CLUB-MATE SOMMELIER", AWARD_MATE, P[top_m].mates)
   AW(top_s, P[top_s].shelved >= 2, "FREE PILE CURATOR", AWARD_CURATOR, P[top_s].shelved)
   AW(top_f, P[top_f].fixes >= 1, "PRINTER WHISPERER", AWARD_WHISPER, P[top_f].fixes)

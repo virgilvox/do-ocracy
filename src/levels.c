@@ -52,12 +52,12 @@ level_t LEVELS[LEVEL_COUNT] = {
       [ST_SHOW]     = { "SHOW WINDOW",             5.75f,  6.75f, 3.75f, 0.3f,  0,    FACE_NZ,   true,  true  },
       [ST_COUCH]    = { "COUCH",                  -7.6f,  -4.3f,  0.45f, 1.2f,  PI_2, FACE_NONE, true,  false },
       [ST_TABLE]    = { "HYH TABLE",              -0.5f,   2.6f,  1.9f,  0.8f,  0,    FACE_NONE, true,  false },
-      /* the ten new stations stand where section 3 puts them but are parked
-       * (present false) until each one's model and actions land */
-      [ST_VEND]     = { "VENDING",               -11.3f,   4.3f,  0.3f,  0.5f,  0,    FACE_PX,   false, false },
-      [ST_BOARD]    = { "WHITEBOARD",             -4.4f,   1.6f,  0.7f,  0.15f, 0,    FACE_PZ,   false, false },
-      [ST_SEWING]   = { "SEWING",                -11.2f,   2.2f,  0.4f,  0.8f,  0,    FACE_PX,   false, false },
-      [ST_BATH]     = { "BATHROOM",               -6.9f,  -6.85f, 0.5f,  0.3f,  0,    FACE_PZ,   false, false },
+      /* the new stations stand where section 3 puts them; the ones still parked
+       * (present false) wait for their models and actions */
+      [ST_VEND]     = { "VENDING",               -11.3f,   4.3f,  0.3f,  0.5f,  0,    FACE_PX,   true,  false },
+      [ST_BOARD]    = { "WHITEBOARD",             -4.4f,   1.6f,  0.7f,  0.15f, 0,    FACE_PZ,   true,  false },
+      [ST_SEWING]   = { "SEWING",                -11.2f,   2.2f,  0.4f,  0.8f,  0,    FACE_PX,   true,  false },
+      [ST_BATH]     = { "BATHROOM",               -6.9f,  -6.85f, 0.5f,  0.3f,  0,    FACE_PZ,   true,  false },
       [ST_STORAGE]  = { "MEMBER STORAGE",        -11.3f,   0.0f,  0.3f,  0.6f,  0,    FACE_PX,   false, false },
       [ST_FORGE]    = { "WELDING BAY",            11.4f,  -4.2f,  0.5f,  0.8f,  0,    FACE_NX,   false, false },
       [ST_LIBRARY]  = { "COFFEE AND BOOKS",      -10.2f,   6.7f,  0.6f,  0.35f, 0,    FACE_NZ,   false, false },
@@ -149,7 +149,7 @@ level_t LEVELS[LEVEL_COUNT] = {
       { SG_UPSTAIRS, "UPSTAIRS: LIMITED ACCESS", -8.75f, 2.0f, -6.33f, 0, 0.8f, 0.2f },
       { SG_OPEN,     "OPEN",            -3.2f,   2.45f,  7.13f, 0,     1.4f, 0.7f },   /* west window header */
       { SG_PEGBOARD, NULL,              11.97f,  2.15f,  0.1f,  -PI_2, 3.6f, 1.8f },   /* behind the bench */
-      { SG_WC,       "WC",              -6.9f,   1.9f,  -6.8f,  0,     0.25f, 0.25f },
+      { SG_WC,       "WC",              -6.9f,   1.9f,  -6.93f,  0,     0.25f, 0.25f },
       { SG_PAY,      "PAY FOR SNACKS HERE", -10.44f, 1.7f, -6.5f, PI_2, 0.4f, 0.2f }, /* the fridge's +x face */
     },
     .sign_n = 29,
