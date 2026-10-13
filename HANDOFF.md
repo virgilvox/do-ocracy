@@ -104,7 +104,7 @@ The Playwright checks used during development (browser player with two keyboard 
 - HeatSync material: only general, public hackerspace culture and HeatSync lore. Nothing personal, nothing from the private governance or conflict material, no names. Roles only.
 - Voice: no em or en dashes, no emoji, no bold for emphasis in prose, none of the banned filler words. `hackerspace-forge`'s `scripts/lint_deliverable.py` checks the README, HANDOFF and in-game text; it reports zero findings at this handoff.
 - Visuals: GANTRY tokens (char, bone, hazard amber as a fill, rust, live teal), square corners, solid offset shadows, caution tape between things. The HeatSync mark is drawn from its official paths in its two colours, never altered.
-- The 3D printers are Loafer and Dr. Strange. BobRoss is the paper printer.
+- The 3D printers are Ouch and Dr. Strange (public tool names; the old joke names are retired). BobRoss is the paper printer.
 
 ## Ideas not done
 

@@ -500,10 +500,11 @@ static void act(player_t *p, int kind, int ref) {
       } else if (ref == ST_TRASH) {
         int v = it->type == IT_SCRAP ? 40 : it->type == IT_BOTTLE ? 30 : it->type == IT_SPAGHETTI ? 50 : it->type == IT_DONATION ? 50 : 0;
         if (v) karma(p, v); else { pop(p, C_INK_ERR, "WASTED PLYWOOD", 0); audio_play(SFX_DROP); }
+        if (it->type == IT_SPAGHETTI && !p->bot) game_toast(TOAST_SPAGHETTI, C_INK_OK);
       } else if (ref == ST_FREEPILE) {
         int v = it->type == IT_DONATION ? 90 : it->type == IT_SCRAP ? 40 : 20;
         karma(p, v);
-        if (it->type == IT_DONATION) game_toast("SOMEONE WILL WANT THAT. SOMEDAY.", C_ASH);
+        if (it->type == IT_DONATION) { p->shelved++; game_toast(TOAST_SHELVED, C_ASH); }
       }
       kill_item(p->hold);
       break;
@@ -515,6 +516,7 @@ static void act(player_t *p, int kind, int ref) {
       break;
     case W_CUT:
       make_project(p, 0);
+      if (!p->bot) game_toast(TOAST_CUT, C_HAZARD);
       spawn_item(IT_SCRAP, s->x + (frnd() - 0.5f) * 2.0f, s->z + s->hd + 0.6f, 0, 0);
       s->dust += L->night.cut_dust + frnd() * L->night.cut_dust_rnd;
       s->state = S_IDLE;
@@ -542,6 +544,7 @@ static void act(player_t *p, int kind, int ref) {
     case W_FIX:
       s->state = S_IDLE;
       karma(p, 80);
+      p->fixes++;
       snprintf(msg, sizeof msg, PICK(FIXED_PRINTER), s->label);
       game_toast(msg, C_INK_OK);
       break;
@@ -549,27 +552,32 @@ static void act(player_t *p, int kind, int ref) {
     case W_BENCH: make_project(p, 2); audio_play(SFX_PICKUP); break;
     case W_LUMBER:
       give(p, spawn_item(IT_PLYWOOD, p->x, p->z, 0, 0));
-      if (frnd() < 0.45f) spawn_item(IT_SAWDUST, s->x + s->hw + 0.6f + frnd(), s->z + (frnd() - 0.5f) * 2.4f, 0, 0);
+      if (frnd() < 0.45f) spawn_item(IT_SAWDUST, s->x + (frnd() - 0.5f) * 1.6f, s->z + s->hd + 0.6f + frnd(), 0, 0);   /* on the bays' +z face */
       audio_play(SFX_PICKUP);
       break;
     case W_DISH:
-      if (s->count > 0) { s->count--; karma(p, 15); }
+      if (s->count > 0) {
+        s->count--; p->dishes++; karma(p, 15);
+        if (s->count == 0 && !p->bot) game_toast(TOAST_DISHES, C_INK_OK);
+      }
       break;
     case W_MATE:
       p->boost = 7; p->mates++; p->owes_bottle = true;
+      if (p->mates == 1 && !p->bot) game_toast(TOAST_MATE, C_HAZARD);
       pop(p, C_HAZARD, "SPEED", 0);
       audio_play(SFX_SLURP);
       break;
     case W_FRIDGE:
       s->smell = false;
       karma(p, 90);
-      game_toast("THE FRIDGE IS SAFE AGAIN. NOBODY ASK WHAT IT WAS.", C_INK_OK);
+      game_toast(TOAST_FRIDGE, C_INK_OK);
       break;
     case W_FLOOR: {
       int t = I[ref].type;
       kill_item(ref);
       karma(p, t == IT_DAISY ? 120 : t == IT_PUDDLE ? 50 : 40);
-      if (t == IT_DAISY) game_toast("UNPLUGGED. THE FIRE MARSHAL NODS SOMEWHERE.", C_INK_OK);
+      if (t == IT_DAISY) { p->unplugged++; game_toast(TOAST_UNPLUGGED, C_INK_OK); }
+      else if (!p->bot) game_toast(t == IT_PUDDLE ? TOAST_MOPPED : TOAST_SWEPT, C_INK_OK);
       break;
     }
     case W_GREET: {
@@ -579,6 +587,7 @@ static void act(player_t *p, int kind, int ref) {
       karma(p, L->night.greet_karma);
       G.vibe = fminf(100, G.vibe + L->night.greet_vibe);
       game_toast(PICK(NEWBIE_JOINS), C_INK_OK);
+      if (p->greeted == 1 && !p->bot) game_toast(TOAST_FIRST_HI, C_INK_OK);
       break;
     }
   }
@@ -975,20 +984,10 @@ static void npc_update(npc_t *n, float dt) {
  * its weight in the night script is ignored. */
 enum { E_NONE, E_HEAT, E_HABOOB, E_TACOS, E_LANDLORD, E_DAISY, E_DONATION, E_STRANGE, E_FRIDGE, E_SPAGHETTI, E_COFFEE,
        E_THREAD, E_LABELS, E_PURGE, E_NOSTALGIA, E_BATH, E_FLAT, E_BIN, E_TOUR, E_DRAIN, E_DOOR, E_VEND };
-static const struct { const char *text, *sub; int effect; } EVENTS[] = {
-  { "LINUX NIGHT: CANCELED.", "NOTHING HAPPENS. AS USUAL.", E_NONE },
-  { "QUIET NIGHT. NOTHING HAPPENS.", "ENJOY IT.", E_NONE },
-  { "5TH THURSDAY?! IT'S BLASPHEMY!", "IT IS TUESDAY. NOTHING HAPPENS.", E_NONE },
-  { "IT IS 118 OUTSIDE.", "EVERYONE SLOWS DOWN. THE AC LEAKS: MOP IT UP.", E_HEAT },
-  { "HABOOB!", "DUST ON THE FLOOR AND IN THE LASER. SWEEP IT.", E_HABOOB },
-  { "SOMEBODY BROUGHT TACOS.", "VIBE UP. SO ARE THE DISHES.", E_TACOS },
-  { "LANDLORD WALKTHROUGH IN 10 SECONDS.", "GET CLUTTER UNDER 50 OR LOSE VIBE.", E_LANDLORD },
-  { "POWER STRIP DAISY CHAIN DETECTED.", "UNPLUG IT. THE FIRE MARSHAL HATES THESE.", E_DAISY },
-  { "DONATION AT THE FRONT DOOR.", "CARRY IT TO THE FREE PILE.", E_DONATION },
-  { "ANY PARTICULAR REASON WHY DR. STRANGE IS DOWN?", "THE PRINTER JAMMED. HOLD YOUR BUTTON ON IT TO FIX.", E_STRANGE },
-  { "MYSTERY FOOD IN THE FRIDGE.", "SOMEONE HAS TO DEAL WITH IT. HOLD ON THE FRIDGE.", E_FRIDGE },
-  { "PRINT LEFT RUNNING.", "SPAGHETTI ON THE FLOOR. TRASH IT.", E_SPAGHETTI },
-  { "COFFEE AND COWORKING RAN LONG.", "GOOD VIBES.", E_COFFEE },
+/* the effect of each row the game has; the banner and sub are EVENT_TEXT[row] in content.h */
+static const int EVENTS[] = {
+  E_NONE, E_NONE, E_NONE, E_HEAT, E_HABOOB, E_TACOS, E_LANDLORD, E_DAISY, E_DONATION, E_STRANGE,
+  E_FRIDGE, E_SPAGHETTI, E_COFFEE,
 };
 
 static void spawn_donation(void) {
@@ -1025,10 +1024,16 @@ static void fire_event(void) {
   }
   if (e < 0) return;
   G.event = e;
-  ticker_sub(EVENTS[e].text, EVENTS[e].sub, C_HAZARD);
+  /* the banner names the printer and the sub names the landlord's limit through one %s or %d */
+  char text[96], sub[96];
+  if (EVENTS[e] == E_STRANGE) snprintf(text, sizeof text, EVENT_TEXT[e].text, S[ST_PRINT2].label);
+  else snprintf(text, sizeof text, "%s", EVENT_TEXT[e].text);
+  if (EVENTS[e] == E_LANDLORD) snprintf(sub, sizeof sub, EVENT_TEXT[e].sub, L->night.landlord_limit);
+  else snprintf(sub, sizeof sub, "%s", EVENT_TEXT[e].sub);
+  ticker_sub(text, sub, C_HAZARD);
   audio_play(SFX_ALARM);
   float x, z;
-  switch (EVENTS[e].effect) {
+  switch (EVENTS[e]) {
     case E_HEAT:
       G.heat = 12;
       if (spot_in(&L->puddle_box, 0.6f, &x, &z)) spawn_item(IT_PUDDLE, x, z, 0, 0);   /* the AC drips by the sink */

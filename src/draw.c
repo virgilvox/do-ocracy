@@ -90,11 +90,13 @@ static int keycap(int x, int y, const char *k, uint32_t fill, uint32_t ink) {
   return w;
 }
 
+/* the wall clock: the level says when the night starts and how many hours it spans */
 static void clock_str(char *out, int n) {
   float frac = G.phase == PH_NIGHT ? G.t / G.night_len : 0;
-  int mins = 19 * 60 + (int)(frac * 240);
-  int h = mins / 60, m = mins % 60;
-  snprintf(out, (size_t)n, "%d:%02d PM", h > 12 ? h - 12 : h, m);
+  int mins = L->night.clock_h0 * 60 + (int)(frac * L->night.clock_span * 60);
+  int h = (mins / 60) % 24, m = mins % 60;
+  int h12 = h % 12 == 0 ? 12 : h % 12;
+  snprintf(out, (size_t)n, "%d:%02d %s", h12, m, h < 12 ? "AM" : "PM");
 }
 
 /* ── particles: sparks, sparkles, confetti, dust, steam ─────────── */
@@ -171,13 +173,30 @@ static void fx_draw(float dt) {
 
 /* ── the room: what each thing is, what it pays, what is wrong ───── */
 
+/* The label budget (FINAL-space.md 11.3): with 23 stations the names cannot all
+ * be up at once. A name draws only when the station has a status (an alarm or
+ * something ready), when a human is within 2.2 units, or when the level marks
+ * it always_label (the few the coach points at). The orange wall tiles and the
+ * floor accents carry the names the rest of the time. */
+static float label_height(int i) {
+  switch (i) {
+    case ST_FRIDGE: return 2.4f;
+    case ST_BATH: return 2.2f;
+    case ST_LUMBER: return 2.1f;
+    case ST_PRINT1: case ST_PRINT2: case ST_STORAGE: return 2.0f;
+    case ST_BOARD: case ST_LASER: return 1.9f;
+    case ST_FORGE: return 1.6f;
+    default: return 1.3f;
+  }
+}
+
 static void station_labels(void) {
   for (int i = 0; i < ST_COUNT; i++) {
     station_t *s = &S[i];
-    if (i == ST_COUCH || i == ST_TABLE || !s->present) continue;
+    if (i == ST_COUCH || i == ST_TABLE || i == ST_SWITCH || !s->present || !s->label[0]) continue;
+    if (i == ST_BACKDOOR && s->state != S_BROKEN) continue;
     int sx, sy;
-    float top = i == ST_FRIDGE ? 2.4f : i == ST_LUMBER ? 2.1f : (i >= ST_PRINT1 && i <= ST_PRINT2) ? 2.0f : 1.3f;
-    if (!project(s->x, top, s->z, &sx, &sy)) continue;
+    if (!project(s->x, label_height(i), s->z, &sx, &sy)) continue;
     char st[48] = "";
     uint32_t c = C_ASH;
     bool alarm = false;
@@ -223,6 +242,7 @@ static void station_labels(void) {
     }
     bool ready = (i == ST_LASER && s->state == S_LOADED) || ((i == ST_PRINT1 || i == ST_PRINT2) && s->state == S_DONE);
     if (!(alarm || ready || near)) st[0] = 0;
+    if (!(alarm || ready || near || s->always_label)) continue;
     uint32_t edge = pay == 1 ? C_HAZARD : pay == 2 ? C_LIVE : C_STEEL_HI;
     int w = hud_text_w(F_MONO_S, s->label);
     int sw = st[0] ? hud_text_w(F_MONO_S, st) + 12 : 0;
@@ -275,7 +295,7 @@ static void npcs_overlay(void) {
     int sx, sy;
     if (!project(n->x, 2.2f, n->z, &sx, &sy)) continue;
     if (n->state <= 1) {
-      float f = n->patience / 20.f;
+      float f = n->patience / L->night.patience;
       hud_circle(sx, sy, 20, C_CHAR, 235);
       hud_ring(sx, sy, 20, 5, f, f < 0.35f ? C_FAULT : C_LIVE, 255);
       hud_text(F_H3, sx, sy - 16, "?", C_BONE, 255, AL_CENTER);
@@ -542,20 +562,25 @@ static bool danger(void) {
 /* the first forty seconds of every night: a coach walks you through it */
 static void coach(void) {
   if (G.phase != PH_NIGHT || G.t > 40) return;
+  /* the stations are named by the level, through one %s each */
   static const char *const STEP[][2] = {
-    { "1 CLOUT", "GRAB PLYWOOD FROM THE LUMBER RACK (LEFT WALL)" },
-    { "2 CLOUT", "LOAD IT INTO PEWPEW 9000, THEN HOLD TO CUT" },
-    { "3 CLOUT", "CARRY YOUR PROJECT TO SHOW & TELL (FRONT)" },
+    { "1 CLOUT", "GRAB PLYWOOD FROM THE %s (BACK WALL)" },
+    { "2 CLOUT", "LOAD IT INTO THE %s, THEN HOLD TO CUT" },
+    { "3 CLOUT", "CARRY YOUR PROJECT TO THE %s (FRONT)" },
     { "4 KARMA", "TEAL RINGS ARE MESSES: HOLD TO CLEAN. JUNK GOES IN THE TRASH" },
     { "5 KARMA", "NEWBIES WITH A ? NEED A HI, OR THEY LEAVE" },
   };
+  static const int STEP_ST[5] = { ST_LUMBER, ST_LASER, ST_SHOW, -1, -1 };
   int k = (int)(G.t / 8);
   if (k > 4) k = 4;
   float local = G.t - k * 8;
   int a = local < 0.3f ? (int)(local / 0.3f * 255) : 255;
   bool karma = k >= 3;
   if (G.ticker_t > 0) return;   /* one thing at a time up top */
-  slot_bar(STEP[k][0], karma ? C_LIVE : C_HAZARD, STEP[k][1], C_BONE, a, 0);
+  char msg[96];
+  if (STEP_ST[k] >= 0) snprintf(msg, sizeof msg, STEP[k][1], S[STEP_ST[k]].label);
+  else snprintf(msg, sizeof msg, "%s", STEP[k][1]);
+  slot_bar(STEP[k][0], karma ? C_LIVE : C_HAZARD, msg, C_BONE, a, 0);
 }
 
 /* ── full screens ────────────────────────────────────────────────── */
@@ -583,9 +608,9 @@ static void how_to(int x, int y, int w) {
   hud_text(F_H3, x + 34, cy - 2, "CLOUT", C_HAZARD, 255, AL_LEFT);
   hud_text(F_MONO_S, x + 140, cy + 6, "FOR YOU", C_ASH, 255, AL_LEFT);
   int fx = x + 34, fy = cy + 32;
-  fx += flow_chip(fx, fy, "LUMBER", C_HAZARD); fx += flow_arrow(fx, fy, C_HAZARD);
-  fx += flow_chip(fx, fy, "PEWPEW 9000", C_HAZARD); fx += flow_arrow(fx, fy, C_HAZARD);
-  flow_chip(fx, fy, "SHOW & TELL", C_HAZARD);
+  fx += flow_chip(fx, fy, S[ST_LUMBER].label, C_HAZARD); fx += flow_arrow(fx, fy, C_HAZARD);
+  fx += flow_chip(fx, fy, S[ST_LASER].label, C_HAZARD); fx += flow_arrow(fx, fy, C_HAZARD);
+  flow_chip(fx, fy, S[ST_SHOW].label, C_HAZARD);
   cy += 80;
   hud_rect(x + 16, cy, 8, 64, C_LIVE, 255);
   hud_text(F_H3, x + 34, cy - 2, "KARMA", C_LIVE, 255, AL_LEFT);
@@ -677,6 +702,7 @@ static void results_screen(void) {
   memset(award, 0, sizeof award);
   for (int i = 0; i < MAX_PLAYERS; i++) aname[i] = NULL;
   int top_k = -1, top_c = -1, top_t = -1, top_g = -1, top_m = -1, low = -1;
+  int top_s = -1, top_f = -1, top_u = -1, top_d = -1;
   for (int j = 0; j < n; j++) {
     int i = order[j];
     if (top_k < 0 || P[i].karma > P[top_k].karma) top_k = i;
@@ -684,6 +710,10 @@ static void results_screen(void) {
     if (top_t < 0 || P[i].proposals > P[top_t].proposals) top_t = i;
     if (top_g < 0 || P[i].greeted > P[top_g].greeted) top_g = i;
     if (top_m < 0 || P[i].mates > P[top_m].mates) top_m = i;
+    if (top_s < 0 || P[i].shelved > P[top_s].shelved) top_s = i;
+    if (top_f < 0 || P[i].fixes > P[top_f].fixes) top_f = i;
+    if (top_u < 0 || P[i].unplugged > P[top_u].unplugged) top_u = i;
+    if (top_d < 0 || P[i].dishes > P[top_d].dishes) top_d = i;
     if (low < 0 || P[i].tasks + P[i].clout / 500 < P[low].tasks + P[low].clout / 500) low = i;
   }
   if (top_k >= 0 && P[top_k].karma > 0) { aname[top_k] = "JANITORIAL CO-OP"; snprintf(award[top_k], 64, "%s", AWARD_JANITOR); }
@@ -691,6 +721,11 @@ static void results_screen(void) {
   if (top_t >= 0 && !aname[top_t] && P[top_t].proposals >= 3) { aname[top_t] = "TALKER"; snprintf(award[top_t], 64, AWARD_TALKER, P[top_t].proposals); }
   if (top_g >= 0 && !aname[top_g] && P[top_g].greeted >= 2) { aname[top_g] = "GREETER"; snprintf(award[top_g], 64, AWARD_GREETER, P[top_g].greeted); }
   if (top_m >= 0 && !aname[top_m] && P[top_m].mates >= 3) { aname[top_m] = "CLUB-MATE SOMMELIER"; snprintf(award[top_m], 64, AWARD_MATE, P[top_m].mates); }
+  if (top_s >= 0 && !aname[top_s] && P[top_s].shelved >= 2) { aname[top_s] = "FREE PILE CURATOR"; snprintf(award[top_s], 64, AWARD_CURATOR, P[top_s].shelved); }
+  if (top_f >= 0 && !aname[top_f] && P[top_f].fixes >= 1) { aname[top_f] = "PRINTER WHISPERER"; snprintf(award[top_f], 64, AWARD_WHISPER, P[top_f].fixes); }
+  if (top_u >= 0 && !aname[top_u] && P[top_u].unplugged >= 1) { aname[top_u] = "MARSHAL'S FAVORITE"; snprintf(award[top_u], 64, AWARD_MARSHAL, P[top_u].unplugged); }
+  if (top_d >= 0 && !aname[top_d] && P[top_d].dishes >= 4) { aname[top_d] = "DISH PIT"; snprintf(award[top_d], 64, AWARD_DISHPIT, P[top_d].dishes); }
+  for (int j = 0; j < n; j++) { int i = order[j]; if (!aname[i] && P[i].proposals >= 5 && P[i].tasks == 0) { aname[i] = "BIKESHED"; snprintf(award[i], 64, "%s", AWARD_BIKESHED); } }
   if (n >= 2 && low >= 0 && !aname[low]) { aname[low] = "LURKER"; snprintf(award[low], 64, "%s", AWARD_LURKER); }
 
   int y = 200;

@@ -12,7 +12,7 @@ It is 7 PM on a Tuesday. The doors are open, the laser is calling, and the sink 
 
 Everybody scores two things:
 
-- CLOUT is for you. Cut something on PEWPEW 9000, run a print on Loafer or Dr. Strange, solder something at the bench, cut a sticker on Sir Cutsalot (always free). Carry it to Show & Tell.
+- CLOUT is for you. Cut something on the large 80W laser, run a print on Ouch or Dr. Strange, solder something at the bench, cut a sticker on Sir Cutsalot (always free). Carry it to the show window.
 - KARMA is for the space. Wash the dishes. Haul scrap, empty Club-Mate bottles and print spaghetti to the trash. Move donations (a very heavy CRT, three broken printers, a chest freezer that runs fine) to the Free Pile. Unclog the printers. Clean the laser when it is covered in dust. Unplug the daisy-chained power strips. Say hi to the newbies.
 
 The space has two meters:
@@ -24,13 +24,15 @@ Survive until 11 PM and the space lives to see another Tuesday. Then the scorebo
 
 If the space closes, every point of clout is void. Karma stands. It is the commons dilemma with a laser cutter. Glamour work is fun and pays you. Janitorial work is boring and pays the room. The laser leaves scrap. The prints jam. Club-Mate makes you fast and then you litter. Every newbie you greet becomes a member who quietly cleans up after everyone, for a while, until they drift away (the four year sine wave).
 
-The night throws events at you: IT IS 118 OUTSIDE, HABOOB, SOMEBODY BROUGHT TACOS, LANDLORD WALKTHROUGH, ANY PARTICULAR REASON WHY DR. STRANGE IS DOWN?, and the occasional LINUX NIGHT: CANCELED, which does nothing. X makes a proposal ("I think we should... form a committee"). It earns zero clout and says so.
+The night throws events at you: IT IS 118 OUTSIDE, HABOOB, SOMEBODY BROUGHT TACOS, LANDLORD WALKTHROUGH, ANY PARTICULAR REASON DR. STRANGE IS DOWN?, and the occasional LINUX NIGHT: CANCELED, which does nothing. X makes a proposal ("I think we should... form a committee"). It earns zero clout and says so.
 
 When nobody is playing, the cabinet runs an attract mode. Three archetypes play a night on their own: BUILDER (mostly karma), TALKER (proposals and the laser) and FOUNDER (all glamour). If you play alone, BUILDER and TALKER clock in with you, so there is a commons to ruin.
 
 ## The space
 
-The floor plan is a working makerspace, zone by zone: the wood shop and lumber rack at the back left (OSB floor, sawdust, a table saw), PEWPEW 9000 on its hazard-taped mat, the printing counter with Loafer, Dr. Strange and Sir Cutsalot, the electronics bench on its ESD mat, the metal shop on the right wall (a lathe, a mill that is not a Bridgeport) by the alley door and the dumpster, a checkerboard kitchen with the coffee station and a table, the lounge with the lurker couch, the work island and the assembly table in the middle, Show & Tell in the front window, and the Free Pile by the door. Brick walls, strip lights, string lights, a bike on the wall, the whiteboard that says GOTO 1.
+The floor plan is a working makerspace, zone by zone: the wood shop and lumber rack at the back left (OSB floor, sawdust, a table saw), the laser on its hazard-taped mat, the printing counter with Ouch, Dr. Strange and Sir Cutsalot, the electronics bench on its ESD mat, the metal shop on the right wall (a lathe, a mill that is not a Bridgeport) by the alley door and the dumpster, a checkerboard kitchen with the coffee station and a table, the lounge with the lurker couch, the work island and the assembly table in the middle, Show & Tell in the front window, and the Free Pile by the door. Brick walls, strip lights, string lights, a bike on the wall, the whiteboard that says GOTO 1.
+
+Station labels are level data (src/levels.c) and use the lab's public tool names: LARGE 80W LASER, OUCH, DR. STRANGE, SIR CUTSALOT. The old joke names are retired everywhere.
 
 The floor and walls are textures painted at startup with the HUD's own drawing routines, so there are no image files in the cart.
 

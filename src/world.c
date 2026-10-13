@@ -23,10 +23,11 @@ static t3_geometry *g_box, *g_cyl, *g_sphere, *g_knot, *g_disc, *g_cone;
 static t3_material *m_plywood, *m_amber, *m_scrap, *m_bottle, *m_label, *m_spaghetti, *m_crt, *m_screen,
                    *m_cardboard, *m_sawdust, *m_puddle, *m_strip, *m_glow, *m_skin, *m_visor, *m_pcb, *m_led,
                    *m_char, *m_steel, *m_steel_hi, *m_bone, *m_rust, *m_violet, *m_info,
-                   *m_plate, *m_wood, *m_fridge, *m_mate,
+                   *m_plate, *m_wood,
                    /* section 4.4: the shared colours of the new room */
                    *m_green, *m_red, *m_orange, *m_blue, *m_cord, *m_bulb, *m_door, *m_white, *m_tvs, *m_grey,
-                   *m_scr_g, *m_scr_b, *m_scr_a, *m_glass, *m_woodtop, *m_tube;
+                   *m_scr_g, *m_scr_b, *m_scr_a, *m_woodtop, *m_tube,
+                   *m_ouch, *m_strange;   /* the two printer frames */
 
 /* ── what a rebuild owns ───────────────────────────────────────────
  * Every root object a builder adds, every texture it paints and every
@@ -500,9 +501,7 @@ static void build_room(const level_t *lv) {
 
 /* ── the stations ──────────────────────────────────────────────────
  * Each group stands at S[i] and turns by S[i].ry; an absent station is built
- * anyway and parked at y -20 so world_sync keeps its pointers. The models
- * themselves are the next work item's; the sink's plates are found by the
- * m_plate material and the printers' growth and lamp by pointer. */
+ * anyway and parked at y -20 so world_sync keeps its pointers. */
 static t3_object *station_group(station_t *s) {
   t3_object *g = s->obj = group_at(&SC->base, s->x, s->z);
   t3_object_set_rotation(g, 0, s->ry, 0);
@@ -510,106 +509,146 @@ static t3_object *station_group(station_t *s) {
   return g;
 }
 
+static void grey_chair(t3_object *g, float x, float z, float ry);
+static t3_texture *plaque(int w, int h, uint32_t bg, uint32_t fg, int font, const char *text);
+
+/* Silhouettes first (FINAL-space.md section 10): one dominant colour, one
+ * tall element, fewer small parts. Every piece is a shared geometry in a
+ * shared material so the meshes keep instancing. world_sync finds the sink's
+ * plates by the m_plate material and the printers' growth, lamp and OUT OF
+ * ORDER tag by pointer; keep those when a model changes. */
 static void build_stations(void) {
   station_t *s;
   t3_object *g;
 
-  /* scrap bays: a rack of sheet goods and two-by-fours */
+  /* scrap bays: four open bays, green, yellow, orange, red, with plywood leaning in the first three */
   s = &S[ST_LUMBER]; g = station_group(s);
-  for (int k = -1; k <= 1; k++) BOX(g, m_steel_hi, 0.1f, 2.4f, 0.1f, -0.45f, 1.2f, k * 1.35f);
-  for (int k = 0; k < 3; k++) BOX(g, m_steel_hi, 0.6f, 0.06f, 2.9f, -0.2f, 0.6f + k * 0.7f, 0);
-  for (int k = 0; k < 5; k++) rot(BOX(g, m_plywood, 0.05f, 1.9f, 2.6f, -0.05f + k * 0.08f, 0.95f, 0), 0, 0, -0.13f);
-  for (int k = 0; k < 4; k++) BOX(g, m_wood, 0.5f, 0.09f, 0.09f, -0.2f, 1.36f + (k % 2) * 0.1f, -1.0f + k * 0.6f);
-  BOX(g, m_cardboard, 0.5f, 0.4f, 0.5f, 0.15f, 0.2f, 1.1f);           /* the offcut bin */
+  {
+    t3_material *bay[4] = { m_green, m_cord, m_orange, m_red };
+    BOX(g, m_steel, 1.76f, 0.06f, 0.9f, 0, 0.03f, 0);                                   /* base */
+    BOX(g, m_steel, 1.76f, 1.3f, 0.04f, 0, 0.65f, -0.43f);                              /* back panel */
+    for (int k = 0; k < 5; k++) BOX(g, m_steel, 0.04f, 1.2f, 0.9f, -0.84f + k * 0.42f, 0.6f, 0);   /* dividers */
+    for (int b = 0; b < 4; b++) {
+      float bx = -0.63f + b * 0.42f;
+      BOX(g, bay[b], 0.38f, 0.1f, 0.9f, bx, 1.25f, 0);                                  /* the coloured header */
+      BOX(g, bay[b], 0.38f, 0.14f, 0.06f, bx, 0.13f, 0.42f);                            /* and front lip */
+      if (b < 3) rot(BOX(g, m_plywood, 0.02f, 1.1f, 0.8f, bx, 0.6f, 0), 0, 0, -0.13f);  /* a sheet leaning in */
+    }
+    BOX(g, m_cardboard, 0.3f, 0.2f, 0.2f, 0.63f, 0.16f, 0.1f);                          /* the offcut box in bay 4 */
+    BOX(g, m_red, 0.1f, 0.14f, 0.01f, 0.63f, 0.2f, 0.21f);                              /* with its red tag */
+  }
 
-  /* the big laser: lid, glass, panel, e-stop */
+  /* the big red laser: body, amber lid, glass, panel, e-stop, chiller */
   s = &S[ST_LASER]; g = station_group(s);
-  BOX(g, m_char, 2.8f, 0.9f, 1.6f, 0, 0.45f, 0);
-  BOX(g, m_steel_hi, 2.8f, 0.06f, 1.6f, 0, 0.93f, 0);
-  BOX(g, m_amber, 2.5f, 0.1f, 1.3f, -0.1f, 1.02f, 0);
-  BOX(g, m_glass, 2.1f, 0.04f, 1.0f, -0.1f, 1.09f, 0);
-  BOX(g, m_char, 0.45f, 0.35f, 1.2f, 1.15f, 1.12f, 0);                 /* control panel */
-  BOX(g, m_scr_a, 0.3f, 0.02f, 0.25f, 1.15f, 1.3f, 0.2f);
-  CYL(g, m_red, 0.07f, 0.08f, 1.15f, 1.33f, -0.25f);                   /* e-stop */
-  for (int k = 0; k < 5; k++) BOX(g, m_steel, 0.02f, 0.4f, 0.06f, -1.41f, 0.45f, -0.5f + k * 0.25f);   /* vents */
+  BOX(g, m_char, 2.8f, 0.12f, 1.6f, 0, 0.06f, 0);                                       /* skirt */
+  BOX(g, m_red, 2.8f, 0.9f, 1.6f, 0, 0.45f, 0);                                         /* body */
+  BOX(g, m_steel_hi, 2.8f, 0.05f, 1.6f, 0, 0.925f, 0);                                  /* rim */
+  BOX(g, m_amber, 2.3f, 0.1f, 1.3f, -0.25f, 1.02f, 0);                                  /* lid */
+  BOX(g, m_screen, 1.9f, 0.04f, 1.0f, -0.25f, 1.08f, 0);                                /* glass */
+  BOX(g, m_char, 0.5f, 0.3f, 0.25f, 1.15f, 1.05f, 0.5f);                                /* control panel */
+  noshadow(BOX(g, m_scr_a, 0.3f, 0.18f, 0.02f, 1.15f, 1.07f, 0.63f));                   /* its screen, toward the aisle */
+  CYL(g, m_red, 0.06f, 0.05f, 1.15f, 1.225f, 0.3f);                                     /* e-stop */
+  BOX(g, m_steel, 0.5f, 0.5f, 0.5f, -1.8f, 0.25f, 0.2f);                                /* the chiller */
   s->beam = BOX(g, m_glow, 0.04f, 0.5f, 0.04f, 0, 1.2f, 0);
   s->beam->base.visible = false;
   s->light = BOX(g, keep_mat(mat(0x5fb892, 0.4f, 0)), 0.14f, 0.14f, 0.05f, 1.15f, 0.7f, 0.81f);
 
-  /* the printers stand on the printing counter (an OBK_COUNTER obstacle) */
-  static const uint32_t frames[2] = { 0xe0602a, 0x9b7fd0 };
-  static const uint32_t spools[2] = { 0x2f8562, 0xf2ab1e };
-  for (int k = 0; k < 2; k++) {
-    s = &S[ST_PRINT1 + k]; g = station_group(s);
-    t3_material *fm = keep_mat(mat(frames[k], 0.5f, 0.2f)), *sp = keep_mat(mat(spools[k], 0.5f, 0));
-    BOX(g, m_char, 0.8f, 0.1f, 0.6f, 0, 0.86f, 0);                       /* base */
-    BOX(g, keep_mat(mat(0xb8962e, 0.4f, 0.4f)), 0.6f, 0.03f, 0.5f, 0, 0.93f, 0.02f); /* the bed */
-    BOX(g, fm, 0.06f, 0.75f, 0.06f, -0.37f, 1.28f, -0.18f);
-    BOX(g, fm, 0.06f, 0.75f, 0.06f, 0.37f, 1.28f, -0.18f);
-    BOX(g, fm, 0.8f, 0.06f, 0.06f, 0, 1.65f, -0.18f);
-    BOX(g, m_steel_hi, 0.76f, 0.04f, 0.04f, 0, 1.25f, -0.12f);           /* x gantry */
-    BOX(g, m_char, 0.14f, 0.16f, 0.14f, 0.08f, 1.2f, -0.06f);            /* extruder */
-    part(g, g_cyl, sp, 0.18f, 0.08f, 0.18f, 0, 1.82f, -0.18f);
-    rot(part(g, g_cyl, sp, 0.18f, 0.08f, 0.18f, 0, 1.82f, -0.18f), 1.5707963f, 0, 0);
-    BOX(g, k ? m_scr_b : m_scr_g, 0.16f, 0.08f, 0.02f, 0.25f, 0.88f, 0.31f); /* LCD */
-    s->growth = part(g, g_knot, m_amber, 0.14f, 0.14f, 0.14f, 0, 1.03f, 0.02f);
-    s->growth->base.visible = false;
-    s->light = BOX(g, keep_mat(mat(0x5fb892, 0.4f, 0)), 0.06f, 0.06f, 0.03f, -0.28f, 0.88f, 0.31f);
+  /* the printers stand on the printing counter (an OBK_COUNTER obstacle); each wears an OUT OF ORDER tag while broken */
+  {
+    t3_material *frame[2] = { m_ouch, m_strange };
+    t3_material *spool[2] = { m_pcb, m_amber };
+    for (int k = 0; k < 2; k++) {
+      s = &S[ST_PRINT1 + k]; g = station_group(s);
+      BOX(g, m_char, 0.8f, 0.1f, 0.6f, 0, 0.86f, 0);                                    /* base */
+      BOX(g, m_woodtop, 0.6f, 0.03f, 0.5f, 0, 0.93f, 0.02f);                            /* the bed */
+      BOX(g, frame[k], 0.06f, 0.75f, 0.06f, -0.37f, 1.28f, -0.18f);
+      BOX(g, frame[k], 0.06f, 0.75f, 0.06f, 0.37f, 1.28f, -0.18f);
+      BOX(g, frame[k], 0.8f, 0.06f, 0.06f, 0, 1.65f, -0.18f);
+      BOX(g, m_steel_hi, 0.76f, 0.04f, 0.04f, 0, 1.25f, -0.12f);                        /* x gantry */
+      BOX(g, m_char, 0.14f, 0.16f, 0.14f, 0.08f, 1.2f, -0.06f);                         /* extruder */
+      rot(part(g, g_cyl, spool[k], 0.18f, 0.08f, 0.18f, 0, 1.82f, -0.18f), 1.5707963f, 0, 0);
+      noshadow(BOX(g, k ? m_scr_b : m_scr_g, 0.16f, 0.08f, 0.02f, 0.25f, 0.88f, 0.31f)); /* LCD */
+      s->growth = part(g, g_knot, m_amber, 0.14f, 0.14f, 0.14f, 0, 1.03f, 0.02f);
+      s->growth->base.visible = false;
+      s->light = BOX(g, keep_mat(mat(0x5fb892, 0.4f, 0)), 0.06f, 0.06f, 0.03f, -0.28f, 0.88f, 0.31f);
+      s->beam = sign_on(g, plaque(96, 56, C_BONE, C_CHAR, F_MONO_S, "OUT OF\nORDER"), 0.24f, 0.14f, 0.12f, 1.08f, 0.34f, 0);
+      s->beam->base.visible = false;
+    }
   }
 
-  /* the vinyl cutter nobody fights over, on the craft counter */
+  /* the vinyl cutter nobody fights over, on the craft counter (the heat press and the Cameo are the counter's) */
   s = &S[ST_CUTSALOT]; g = station_group(s);
   BOX(g, m_red, 1.2f, 0.3f, 0.5f, 0, 0.9f, 0);
   rot(part(g, g_cyl, m_violet, 0.07f, 1.0f, 0.07f, 0, 1.05f, 0.2f), 0, 0, 1.5707963f);
   BOX(g, m_char, 0.1f, 0.12f, 0.12f, 0.2f, 1.1f, 0.05f);
-  BOX(g, m_scr_b, 0.14f, 0.06f, 0.02f, -0.45f, 0.98f, 0.26f);
+  noshadow(BOX(g, m_scr_b, 0.14f, 0.06f, 0.02f, -0.45f, 0.98f, 0.26f));
 
-  /* the electronics bench: monitors, a scope, a soldering station, parts drawers, a lamp */
+  /* the electronics bench, long axis local x (the group turns by ry so that is world z):
+   * white top on an ESD mat, two monitors facing the aisle, a scope, the iron, one drawer
+   * unit, the instrument rack against the wall and a red lift table at the back end */
   s = &S[ST_BENCH]; g = station_group(s);
-  BOX(g, m_white, 3.8f, 0.08f, 1.3f, 0, 0.86f, 0);
-  BOX(g, m_info, 3.2f, 0.01f, 0.9f, 0.1f, 0.905f, 0.1f);                     /* ESD mat */
-  for (int i = 0; i < 4; i++) BOX(g, m_steel_hi, 0.08f, 0.86f, 0.08f, i < 2 ? -1.8f : 1.8f, 0.43f, i & 1 ? -0.55f : 0.55f);
+  BOX(g, m_white, 3.2f, 0.08f, 1.3f, -0.3f, 0.86f, 0);
+  BOX(g, m_info, 2.9f, 0.01f, 1.0f, -0.3f, 0.905f, 0);                                   /* ESD mat */
+  for (int i = 0; i < 4; i++) BOX(g, m_steel_hi, 0.08f, 0.86f, 0.08f, i < 2 ? -1.8f : 1.2f, 0.43f, i & 1 ? -0.55f : 0.55f);
   for (int k = 0; k < 2; k++) {
-    float mx = -1.2f + k * 0.9f;
-    BOX(g, m_char, 0.08f, 0.35f, 0.08f, mx, 1.07f, -0.45f);
-    BOX(g, m_char, 0.8f, 0.5f, 0.05f, mx, 1.45f, -0.45f);
-    BOX(g, k ? m_scr_b : m_scr_g, 0.72f, 0.42f, 0.01f, mx, 1.45f, -0.42f);
+    float mx = -1.3f + k * 0.8f;
+    BOX(g, m_char, 0.08f, 0.22f, 0.08f, mx, 1.0f, -0.4f);
+    BOX(g, m_char, 0.5f, 0.32f, 0.04f, mx, 1.27f, -0.4f);
+    noshadow(BOX(g, m_tvs, 0.42f, 0.26f, 0.01f, mx, 1.27f, -0.375f));
   }
-  BOX(g, m_info, 0.55f, 0.32f, 0.38f, 0.7f, 1.06f, -0.3f);                  /* the scope */
-  BOX(g, m_scr_g, 0.3f, 0.2f, 0.01f, 0.62f, 1.08f, -0.105f);
-  BOX(g, m_rust, 0.4f, 0.18f, 0.3f, 1.35f, 0.99f, -0.2f);                   /* soldering station */
-  part(g, g_cyl, m_steel_hi, 0.05f, 0.18f, 0.05f, 1.55f, 1.0f, 0.05f);
-  for (int r = 0; r < 3; r++) for (int c = 0; c < 4; c++)                      /* parts drawers */
-    BOX(g, (r + c) & 1 ? m_info : m_rust, 0.12f, 0.08f, 0.2f, -1.7f + c * 0.13f, 0.96f + r * 0.09f, -0.4f);
-  for (int i = 0; i < 6; i++) part(g, g_sphere, m_led, 0.05f, 0.05f, 0.05f, -0.2f + i * 0.12f, 0.93f, 0.35f);
-  BOX(g, m_pcb, 0.5f, 0.03f, 0.35f, -0.3f, 0.92f, 0.2f);
-  rot(BOX(g, m_steel_hi, 0.04f, 0.7f, 0.04f, 1.75f, 1.25f, -0.4f), 0, 0, 0.3f);   /* desk lamp */
-  BOX(g, m_scr_a, 0.2f, 0.08f, 0.14f, 1.6f, 1.58f, -0.3f);
+  BOX(g, m_info, 0.5f, 0.32f, 0.38f, 0.4f, 1.06f, -0.3f);                                /* the scope */
+  noshadow(BOX(g, m_scr_g, 0.3f, 0.2f, 0.01f, 0.35f, 1.08f, -0.105f));
+  BOX(g, m_rust, 0.3f, 0.12f, 0.25f, 0.95f, 0.96f, 0.1f);                                /* the iron's stand */
+  CYL(g, m_steel_hi, 0.03f, 0.2f, 1.0f, 1.1f, 0.1f);
+  BOX(g, m_pcb, 0.5f, 0.03f, 0.35f, -0.6f, 0.92f, 0.2f);
+  for (int i = 0; i < 3; i++) noshadow(part(g, g_sphere, m_led, 0.05f, 0.05f, 0.05f, -0.2f + i * 0.14f, 0.93f, 0.35f));
+  BOX(g, m_info, 1.2f, 0.5f, 0.6f, -1.1f, 0.25f, 0.1f);                                  /* the drawer unit */
+  for (int r = 0; r < 3; r++) BOX(g, m_char, 1.1f, 0.02f, 0.01f, -1.1f, 0.12f + r * 0.13f, -0.2f);
+  BOX(g, m_steel_hi, 3.6f, 1.4f, 0.3f, -0.1f, 1.6f, 0.5f);                               /* the rack on the wall side */
+  for (int k = 0; k < 4; k++) {
+    float rx = -1.5f + k * 0.95f;
+    BOX(g, m_steel, 0.7f, 0.22f, 0.04f, rx, 1.2f + (k & 1) * 0.55f, 0.33f);              /* an instrument */
+    noshadow(part(g, g_sphere, m_led, 0.025f, 0.025f, 0.025f, rx + 0.25f, 1.2f + (k & 1) * 0.55f, 0.36f));
+  }
+  BOX(g, m_red, 0.6f, 0.5f, 0.5f, 1.6f, 0.25f, 0);                                       /* the lift table */
+  rot(BOX(g, m_steel_hi, 0.04f, 0.7f, 0.04f, 1.1f, 1.25f, -0.4f), 0, 0, 0.3f);            /* desk lamp */
+  noshadow(BOX(g, m_scr_a, 0.2f, 0.08f, 0.14f, 0.95f, 1.58f, -0.3f));
 
-  /* the kitchen: sink cabinet, faucet, dish rack; the fridge with magnets */
+  /* the kitchen: sink cabinet, faucet, dishes, and the wire rack with the bottles and the MSDS binder */
   s = &S[ST_SINK]; g = station_group(s);
-  BOX(g, m_bone, 1.1f, 0.85f, 1.75f, 0.05f, 0.425f, 0);
-  BOX(g, m_white, 1.2f, 0.06f, 1.85f, 0.05f, 0.88f, 0);
-  BOX(g, m_steel_hi, 0.7f, 0.04f, 0.8f, 0.1f, 0.9f, -0.2f);
-  BOX(g, m_char, 0.6f, 0.03f, 0.7f, 0.1f, 0.915f, -0.2f);
-  CYL(g, m_steel_hi, 0.03f, 0.35f, -0.25f, 1.08f, -0.2f);
-  BOX(g, m_steel_hi, 0.25f, 0.04f, 0.04f, -0.13f, 1.25f, -0.2f);
-  for (int k = 0; k < 2; k++) BOX(g, m_steel, 0.01f, 0.7f, 0.8f, 0.61f, 0.42f, -0.43f + k * 0.86f);   /* cabinet doors */
+  BOX(g, m_bone, 1.1f, 0.85f, 1.2f, 0.05f, 0.425f, -0.3f);
+  BOX(g, m_white, 1.2f, 0.06f, 1.3f, 0.05f, 0.88f, -0.3f);
+  BOX(g, m_steel_hi, 0.7f, 0.04f, 0.8f, 0.1f, 0.9f, -0.4f);
+  BOX(g, m_char, 0.6f, 0.03f, 0.7f, 0.1f, 0.915f, -0.4f);
+  CYL(g, m_steel_hi, 0.03f, 0.35f, -0.25f, 1.08f, -0.4f);
+  BOX(g, m_steel_hi, 0.25f, 0.04f, 0.04f, -0.13f, 1.25f, -0.4f);
+  for (int k = 0; k < 2; k++) BOX(g, m_steel, 0.01f, 0.7f, 0.55f, 0.61f, 0.42f, -0.6f + k * 0.6f);   /* cabinet doors */
   for (int i = 0; i < 10; i++) {
-    t3_mesh *pl = part(g, g_cyl, m_plate, 0.26f, 0.035f, 0.26f, 0.1f + (i & 1) * 0.03f, 0.98f + i * 0.05f, 0.45f + (i % 3) * 0.04f);
+    t3_mesh *pl = part(g, g_cyl, m_plate, 0.26f, 0.035f, 0.26f, 0.1f + (i & 1) * 0.03f, 0.98f + i * 0.05f, 0.1f + (i % 3) * 0.04f);
     pl->base.visible = false;
   }
+  for (int k = 0; k < 4; k++) BOX(g, m_steel_hi, 0.03f, 1.5f, 0.03f, k & 1 ? -0.06f : -0.54f, 0.75f, k < 2 ? 0.47f : 0.83f);   /* the wire rack */
+  for (int k = 0; k < 3; k++) BOX(g, m_steel_hi, 0.5f, 0.02f, 0.4f, -0.3f, 0.5f + k * 0.5f, 0.65f);
+  {
+    t3_material *bot[3] = { m_info, m_bone, m_amber };
+    for (int k = 0; k < 3; k++) CYL(g, bot[k], 0.05f, 0.22f, -0.42f + k * 0.13f, 1.62f, 0.65f);
+  }
+  BOX(g, m_bone, 0.25f, 0.3f, 0.06f, -0.3f, 1.16f, 0.72f);                               /* the MSDS binder */
 
+  /* the snack fridge: a dark box with a glass door on the aisle side and the snack box on top */
   s = &S[ST_FRIDGE]; g = station_group(s);
-  BOX(g, m_fridge, 1.0f, 2.1f, 0.95f, 0, 1.05f, 0);
-  BOX(g, m_steel, 0.02f, 0.03f, 0.9f, 0.51f, 1.45f, 0);
-  BOX(g, m_steel_hi, 0.05f, 0.5f, 0.05f, 0.53f, 1.8f, 0.35f);
-  BOX(g, m_steel_hi, 0.05f, 0.7f, 0.05f, 0.53f, 0.95f, 0.35f);
-  t3_material *mags[5] = { m_amber, m_rust, m_info, m_green, m_violet };
-  for (int k = 0; k < 5; k++) BOX(g, mags[k], 0.02f, 0.1f, 0.12f, 0.52f, 1.0f + (k % 3) * 0.25f, -0.3f + k * 0.13f);
-  BOX(g, m_cord, 0.5f, 0.25f, 0.4f, 0, 2.23f, 0);                         /* a Club-Mate crate on top */
-  for (int i = 0; i < 6; i++) part(g, g_cyl, m_mate, 0.05f, 0.18f, 0.05f, -0.15f + (i % 3) * 0.15f, 2.43f, -0.08f + (i / 3) * 0.16f);
-  s->light = part(g, g_sphere, keep_mat(mat(0x5fb892, 0.5f, 0)), 0.0f, 0.0f, 0.0f, 0, 2.7f, 0);
+  BOX(g, m_char, 1.0f, 1.9f, 0.95f, 0, 0.95f, 0);
+  noshadow(BOX(g, m_screen, 0.02f, 1.4f, 0.7f, 0.505f, 1.0f, 0));
+  BOX(g, m_steel_hi, 0.04f, 0.6f, 0.04f, 0.53f, 1.0f, 0.4f);                              /* handle */
+  {
+    t3_material *can[3] = { m_red, m_info, m_amber };
+    for (int r = 0; r < 3; r++) {
+      noshadow(BOX(g, m_bone, 0.04f, 0.02f, 0.66f, 0.515f, 0.5f + r * 0.42f, 0));         /* a shelf behind the glass */
+      for (int k = 0; k < 4; k++) noshadow(CYL(g, can[(r + k) % 3], 0.04f, 0.12f, 0.5f, 0.57f + r * 0.42f, -0.24f + k * 0.16f));
+    }
+  }
+  BOX(g, m_cardboard, 0.5f, 0.3f, 0.4f, 0, 2.05f, 0);                                     /* the snack box */
+  s->light = part(g, g_sphere, keep_mat(mat(0x5fb892, 0.5f, 0)), 0.0f, 0.0f, 0.0f, 0, 2.45f, 0);
 
   /* trash: the wheelbarrow and two bins in the hallway recess */
   s = &S[ST_TRASH]; g = station_group(s);
@@ -619,41 +658,51 @@ static void build_stations(void) {
   CYL(g, m_char, 0.25f, 0.7f, -0.55f, 0.35f, -0.25f);
   CYL(g, m_info, 0.25f, 0.7f, 0.55f, 0.35f, -0.25f);
 
-  /* the free stuff shelf: shelves that gave up, bins in front */
+  /* the free stuff shelf: three boards on posts against the wall, tear apart bins in front, a FREE sign */
   s = &S[ST_FREEPILE]; g = station_group(s);
-  for (int lvl = 0; lvl < 3; lvl++) BOX(g, m_steel_hi, 0.6f, 0.05f, 2.0f, -0.2f, 0.35f + lvl * 0.6f, 0);
-  for (int k = -1; k <= 1; k += 2) BOX(g, m_steel_hi, 0.6f, 1.6f, 0.05f, -0.2f, 0.8f, k * 0.98f);
-  BOX(g, m_crt, 0.5f, 0.45f, 0.55f, -0.2f, 0.62f, -0.5f);
-  BOX(g, m_screen, 0.02f, 0.34f, 0.42f, 0.07f, 0.64f, -0.5f);
-  BOX(g, m_cardboard, 0.45f, 0.4f, 0.6f, -0.2f, 0.6f, 0.3f);
-  BOX(g, m_cardboard, 0.45f, 0.3f, 0.5f, -0.2f, 1.12f, 0.4f);
-  BOX(g, m_char, 0.4f, 0.25f, 0.7f, -0.2f, 1.08f, -0.4f);
-  part(g, g_knot, m_char, 0.12f, 0.06f, 0.12f, -0.2f, 1.55f, 0);         /* a tangle of cables */
-  BOX(g, m_steel, 0.5f, 0.35f, 0.4f, 0.3f, 0.18f, -0.45f);                /* tear apart bins */
-  BOX(g, m_steel, 0.5f, 0.35f, 0.4f, 0.3f, 0.18f, 0.45f);
+  for (int k = 0; k < 4; k++) BOX(g, m_steel_hi, 0.04f, 1.6f, 0.04f, k & 1 ? -0.1f : -0.5f, 0.8f, k < 2 ? -0.88f : 0.88f);
+  for (int lvl = 0; lvl < 3; lvl++) BOX(g, m_steel_hi, 0.4f, 0.04f, 1.8f, -0.3f, 0.3f + lvl * 0.5f, 0);
+  BOX(g, m_crt, 0.4f, 0.36f, 0.42f, -0.3f, 0.5f, -0.5f);
+  noshadow(BOX(g, m_screen, 0.01f, 0.3f, 0.3f, -0.095f, 0.5f, -0.5f));
+  BOX(g, m_cardboard, 0.35f, 0.3f, 0.5f, -0.3f, 0.47f, 0.35f);
+  BOX(g, m_cardboard, 0.35f, 0.25f, 0.45f, -0.3f, 0.945f, -0.4f);
+  part(g, g_knot, m_char, 0.1f, 0.05f, 0.1f, -0.3f, 0.92f, 0.3f);                        /* a tangle of cables */
+  BOX(g, m_steel, 0.5f, 0.35f, 0.4f, 0.25f, 0.175f, -0.45f);                             /* tear apart bins */
+  BOX(g, m_steel, 0.5f, 0.35f, 0.4f, 0.25f, 0.175f, 0.45f);
+  sign_on(g, plaque(128, 48, C_BONE, C_CHAR, F_H3, "FREE"), 0.5f, 0.19f, -0.3f, 1.45f, 0.91f, 0);
 
-  /* the show window: display shelf, pedestals, a trophy, a LEGO wall */
+  /* the show window: the display shelf, three pedestals, the robot, the LED cube, the marquee,
+   * the DONATE screens, a tombstone and the track lights; a low bone board so the camera still sees the shelf */
   s = &S[ST_SHOW]; g = station_group(s);
-  BOX(g, m_char, 7.4f, 0.5f, 0.6f, 0, 0.25f, 0);
-  BOX(g, m_amber, 7.4f, 0.04f, 0.6f, 0, 0.52f, 0);
+  BOX(g, m_char, 7.5f, 0.5f, 0.6f, 0, 0.25f, 0);
+  BOX(g, m_bone, 7.5f, 0.45f, 0.05f, 0, 0.72f, 0.275f);
   for (int k = -1; k <= 1; k++) CYL(g, m_bone, 0.22f, 0.4f + (k == 0) * 0.2f, k * 1.4f, 0.74f + (k == 0) * 0.1f, -0.05f);
-  part(g, g_cone, m_amber, 0.12f, 0.2f, 0.12f, -1.4f, 1.04f, -0.05f);          /* the trophy */
+  part(g, g_cone, m_amber, 0.12f, 0.2f, 0.12f, -1.4f, 1.04f, -0.05f);                   /* the trophy */
   part(g, g_sphere, m_amber, 0.1f, 0.1f, 0.1f, -1.4f, 1.2f, -0.05f);
-  t3_material *lego[4] = { m_red, m_cord, m_info, m_pcb };
-  for (int k = 0; k < 8; k++)
-    BOX(g, lego[k % 4], 0.22f, 0.12f, 0.14f, 2.6f + (k % 3) * 0.12f - 0.1f, 0.6f + (k / 3) * 0.12f, -0.1f + (k & 1) * 0.04f);
+  BOX(g, m_steel, 0.25f, 0.4f, 0.2f, 2.2f, 0.7f, -0.05f);                                /* the toy robot */
+  part(g, g_sphere, m_steel, 0.12f, 0.12f, 0.12f, 2.2f, 1.0f, -0.05f);
+  noshadow(part(g, g_sphere, m_led, 0.03f, 0.03f, 0.03f, 2.2f, 1.02f, 0.07f));
+  BOX(g, m_screen, 0.3f, 0.3f, 0.3f, 2.9f, 0.65f, 0);                                    /* the LED cube */
+  for (int k = 0; k < 8; k++) noshadow(BOX(g, m_led, 0.04f, 0.04f, 0.04f, 2.9f + (k & 1 ? 0.15f : -0.15f), 0.65f + (k & 2 ? 0.15f : -0.15f), (k & 4 ? 0.15f : -0.15f)));
+  BOX(g, m_char, 0.9f, 0.25f, 0.06f, -2.4f, 0.9f, 0.1f);                                 /* the marquee */
+  noshadow(BOX(g, m_scr_a, 0.8f, 0.1f, 0.01f, -2.4f, 0.9f, 0.135f));
+  noshadow(BOX(g, m_tvs, 0.3f, 0.3f, 0.03f, -3.2f, 0.7f, 0.1f));                          /* the DONATE screens */
+  noshadow(BOX(g, m_tvs, 0.3f, 0.3f, 0.03f, 3.4f, 0.7f, 0.1f));
+  BOX(g, m_steel, 0.3f, 0.4f, 0.08f, -0.7f, 0.7f, -0.1f);                                /* the tombstone */
+  noshadow(BOX(g, m_steel_hi, 7.0f, 0.03f, 0.03f, 0, 2.7f, -0.1f));                       /* the track light rail */
+  for (int k = -1; k <= 1; k++) noshadow(CYL(g, m_steel_hi, 0.05f, 0.12f, k * 2.4f, 2.62f, -0.1f));
   s->growth = part(g, g_box, m_amber, 0.42f, 0.42f, 0.42f, 0, 1.4f, -0.05f);
   s->growth->base.visible = false;
 
-  /* the couch, cushions and all, along the station's long axis */
+  /* the couch, four cushions and all, along the station's long axis (ry turns it to face the laser) */
   s = &S[ST_COUCH]; g = station_group(s);
   BOX(g, m_rust, 2.4f, 0.35f, 0.9f, 0, 0.2f, 0);
-  for (int k = 0; k < 3; k++) BOX(g, k & 1 ? m_amber : m_rust, 0.72f, 0.14f, 0.7f, -0.78f + k * 0.78f, 0.44f, 0.05f);
-  BOX(g, m_rust, 2.4f, 0.65f, 0.25f, 0, 0.6f, -0.38f);
-  for (int k = -1; k <= 1; k += 2) BOX(g, m_bone, 0.25f, 0.55f, 0.9f, k * 1.1f, 0.45f, 0);
-  rot(BOX(g, m_amber, 0.35f, 0.3f, 0.12f, -0.8f, 0.65f, -0.18f), 0.2f, 0.3f, 0);   /* a throw pillow */
+  for (int k = 0; k < 4; k++) BOX(g, k & 1 ? m_amber : m_rust, 0.55f, 0.2f, 0.75f, -0.87f + k * 0.58f, 0.45f, 0.05f);
+  BOX(g, m_rust, 2.4f, 0.5f, 0.2f, 0, 0.6f, -0.35f);
+  for (int k = -1; k <= 1; k += 2) BOX(g, m_bone, 0.2f, 0.55f, 0.9f, k * 1.1f, 0.45f, 0);
+  rot(BOX(g, m_amber, 0.35f, 0.3f, 0.12f, -0.8f, 0.65f, -0.18f), 0.2f, 0.3f, 0);         /* a throw pillow */
 
-  /* the HYH table: plywood on trestles, a project in progress */
+  /* the HYH table: plywood on trestles, the QR signs, a bell jar, six chairs tucked in */
   s = &S[ST_TABLE]; g = station_group(s);
   BOX(g, m_plywood, 3.6f, 0.1f, 1.5f, 0, 0.9f, 0);
   for (int i = 0; i < 2; i++) {
@@ -662,13 +711,14 @@ static void build_stations(void) {
     rot(BOX(g, m_wood, 0.05f, 0.9f, 0.05f, tx, 0.45f, 0), -0.25f, 0, 0);
     BOX(g, m_wood, 0.05f, 0.05f, 0.6f, tx, 0.5f, 0);
   }
-  BOX(g, m_bone, 0.25f, 0.25f, 0.02f, -1.2f, 1.08f, -0.5f);                 /* QR signs */
+  BOX(g, m_bone, 0.25f, 0.25f, 0.02f, -1.2f, 1.08f, -0.5f);                              /* QR signs */
   BOX(g, m_char, 0.17f, 0.17f, 0.01f, -1.2f, 1.08f, -0.485f);
   BOX(g, m_bone, 0.25f, 0.25f, 0.02f, 1.2f, 1.08f, -0.5f);
   BOX(g, m_char, 0.17f, 0.17f, 0.01f, 1.2f, 1.08f, -0.485f);
-  BOX(g, m_info, 0.4f, 0.3f, 0.3f, -0.9f, 0.15f, 0.2f);                    /* a blue bin under it */
-  part(g, g_sphere, m_screen, 0.12f, 0.12f, 0.12f, 0.4f, 1.07f, 0.2f);     /* a bell jar */
+  BOX(g, m_info, 0.4f, 0.3f, 0.3f, -0.9f, 0.15f, 0.2f);                                  /* a blue bin under it */
+  part(g, g_sphere, m_screen, 0.12f, 0.12f, 0.12f, 0.4f, 1.07f, 0.2f);                   /* a bell jar */
   BOX(g, m_pcb, 0.4f, 0.03f, 0.3f, -0.3f, 0.97f, 0.3f);
+  for (int k = 0; k < 3; k++) { grey_chair(g, -1.2f + k * 1.2f, 0.55f, 3.1415927f); grey_chair(g, -1.2f + k * 1.2f, -0.55f, 0); }
 
   /* the ten new stations are parked until their models land (work items 6 to 12) */
   for (int i = ST_VEND; i < ST_COUNT; i++) {
@@ -1165,8 +1215,6 @@ void world_init(t3_scene *scene) {
   m_info = mat(C_INFO, 0.5f, 0.2f);
   m_plate = mat(0xf4f1ea, 0.3f, 0);
   m_wood = mat(0x8a6a44, 0.85f, 0);
-  m_fridge = mat(0xd8d2c4, 0.4f, 0.1f);
-  m_mate = mat(0x7a4a18, 0.25f, 0);
   /* section 4.4: the shared colours of the storefront */
   m_green = mat(0x5f8a73, 0.6f, 0.3f);
   m_red = mat(0xc23b2a, 0.6f, 0.2f);
@@ -1179,10 +1227,11 @@ void world_init(t3_scene *scene) {
   m_tvs = emis(0x8fbde6, 1.4f);
   m_grey = mat(0x8b8578, 0.75f, 0);
   m_scr_g = emis(0x7fd0aa, 1.6f); m_scr_b = emis(0x8fbde6, 1.6f); m_scr_a = emis(C_HAZARD, 1.6f);
-  m_glass = mat(0x1d3a3a, 0.1f, 0.2f);
   m_woodtop = mat(0xa57c4f, 0.75f, 0);
   m_tube = emis(0xfff6e0, 2.2f);
   m_tube->roughness = 0.3f;
+  m_ouch = mat(0xe0602a, 0.5f, 0.2f);
+  m_strange = mat(0x9b7fd0, 0.5f, 0.2f);
 
   /* the six lights, made once: 1 hemisphere, 1 directional with the only shadow, 4 point */
   hemi = t3_hemisphere_light_new(0xfff2dc, 0x5a4a3a, 1.4f);
@@ -1359,6 +1408,7 @@ void world_sync(float dt) {
   for (int k = 0; k < 2; k++) {
     station_t *s = &S[ST_PRINT1 + k];
     s->growth->base.visible = s->state == S_BUSY || s->state == S_DONE;
+    if (s->beam) s->beam->base.visible = s->state == S_BROKEN;   /* the OUT OF ORDER tag */
     float g = s->state == S_DONE ? 1.f : 1.f - s->timer / 14.f;
     if (g < 0.05f) g = 0.05f;
     t3_object_set_scale(s->growth, 0.18f * g + 0.04f, 0.18f * g + 0.04f, 0.18f * g + 0.04f);
