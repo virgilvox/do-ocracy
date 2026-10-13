@@ -34,9 +34,15 @@ enum {
   IT_TYPES
 };
 
+/* Station ids. The order is fixed per build: draw.c station_labels, world.c
+ * world_sync and the destination tables in game.c switch on these, and the
+ * loops ST_PRINT1 <= k <= ST_PRINT2 (game.c, draw.c, world.c) mean nothing
+ * may ever go between the two printers. New ids go after ST_TABLE. */
 enum {
   ST_LUMBER, ST_LASER, ST_PRINT1, ST_PRINT2, ST_CUTSALOT, ST_BENCH,
-  ST_SINK, ST_FRIDGE, ST_TRASH, ST_FREEPILE, ST_SHOW, ST_COUCH, ST_TABLE, ST_COUNT
+  ST_SINK, ST_FRIDGE, ST_TRASH, ST_FREEPILE, ST_SHOW, ST_COUCH, ST_TABLE,
+  ST_VEND, ST_BOARD, ST_SEWING, ST_BATH, ST_STORAGE, ST_FORGE, ST_LIBRARY, ST_BACKDOOR, ST_SWITCH, ST_BIKE,
+  ST_COUNT
 };
 
 /* station states */
@@ -58,6 +64,10 @@ typedef struct {
 typedef struct {
   const char *label;
   float x, z, hw, hd;  /* centre and half extents on the floor */
+  float ry;            /* the model group's rotation; collision boxes are given already rotated */
+  uint8_t face;        /* FACE_*: the side bots and newbies approach from */
+  bool present;        /* false: parked at y -20 by world.c, skipped by collide and every action */
+  bool always_label;   /* the HUD name draws even when nothing is happening */
   bool solid;
   int state;
   float timer, dust;
@@ -74,6 +84,9 @@ typedef struct {
   int goal, goal_ref;
   float think, stuck, side, lastx, lastz, talk_in;
   float stuck_total, escape, esc_x, esc_z;
+  float wp_x, wp_z, path_t;   /* the next waypoint on the planned path and when to replan */
+  int wp_goal, wp_ref;
+  bool has_wp;
   int pad;             /* local pad index, or -1 */
   int kb;              /* keyboard seat (0, 1), or -1 */
   bool has_goal;       /* carrying something: where it goes */
@@ -100,6 +113,9 @@ typedef struct {
   char pop[48];
   uint32_t pop_color;
   int clout, karma, proposals, greeted, mates, tasks;
+  /* per night counters for the new stations and their awards */
+  int sewn, notices, wiped, baths, welds, flats, shelved, fixes, unplugged, dishes;
+  float read_t, read_cool;   /* the library passive: standing still by the books */
   float idle;
   char prompt[48];
   float px, pz;        /* where the prompt points */
@@ -115,6 +131,8 @@ typedef struct {
   float patience, life, work;
   int target;          /* item index */
   int hold;
+  int bike;            /* rack slot 0..3, or -1 when they walked */
+  float path_t, wp_x, wp_z, wp_tx, wp_tz;   /* planned path: next waypoint, the target it was planned for */
   float bob;
   t3_object *obj;
   t3_mesh *body;
@@ -140,6 +158,11 @@ typedef struct {
   bool attract;
   float shake;
   int nights;
+  /* the level and the timers the new stations and events add */
+  int level;
+  float sewing, door_dust, labels_t, purge_t, lights_t, sleeper_cool, next_storage, next_book, next_box, gust;
+  int tour_pending;
+  bool lights_on, bike_toast, sew_toast, forge_toast, read_toast;
 } game_t;
 
 extern game_t G;
@@ -148,10 +171,92 @@ extern item_t I[MAX_ITEMS];
 extern npc_t N[MAX_NPCS];
 extern station_t S[ST_COUNT];
 
-/* furniture that blocks movement but does nothing: the room's layout */
-enum { OB_SAW, OB_SHELF, OB_COFFEE, OB_KTABLE, OB_TV, OB_CTABLE, OB_ISLAND, OB_LATHE, OB_MILL, OB_COUNT };
-typedef struct { float x, z, hw, hd; } obst_t;
-extern const obst_t OBST[OB_COUNT];
+/* ── levels: the room as data (docs/design/FINAL-space.md section 7) ─────
+ * A level is a complete description of one night: where every station and
+ * piece of furniture stands, the props, the signs, the floor, the lighting and
+ * the night script. src/levels.c holds the tables; game_set_level copies the
+ * station places into S[] and the simulation reads everything else through L. */
+#define MAX_OBST 24
+#define MAX_PROPS 48
+#define MAX_SIGNS 32
+#define MAX_ACCENTS 24
+#define MAX_OVERLAYS 12
+#define MAX_STENCILS 8
+#define EVENT_ROWS 25
+#define LEVEL_COUNT 5
+
+/* the side a station is used from */
+enum { FACE_NONE, FACE_PZ, FACE_NZ, FACE_PX, FACE_NX };
+/* furniture that blocks movement and does nothing; world.c picks a model by kind */
+enum { OBK_CLOSET, OBK_WOODBAY, OBK_FENCE, OBK_LATHE, OBK_MILL, OBK_COUNTER, OBK_DESKS, OBK_WINDOW, OBK_COFFEE,
+       OBK_LEGO, OBK_HOST, OBK_ISLAND, OBK_DONBIN, OBK_FOLD, OBK_BOXES, OBK_KIND_COUNT };
+/* props: set dressing with no collision */
+enum { PR_PENDANT, PR_TUBE, PR_FAN, PR_EXTINGUISHER, PR_FIRSTAID, PR_SAFETYGLASSES, PR_SHOPVAC, PR_BROOM, PR_TOOLCART,
+       PR_BUCKET, PR_WATER, PR_AFRAME, PR_BIKERACK, PR_LEGO_CRATES, PR_CHAIR, PR_PLANT, PR_HAT, PR_PROJECTOR,
+       PR_SLEEPER, PR_VISITOR, PR_KIND_COUNT };
+/* signs: painted textures hung on walls and furniture */
+enum { SG_LOCKUP, SG_FACADE, SG_TILE, SG_TRIPTYCH, SG_WIFI, SG_EXIT, SG_108, SG_GAS, SG_CAUTION, SG_DARKROOM, SG_PASSES,
+       SG_UPSTAIRS, SG_OPEN, SG_PEGBOARD, SG_WC, SG_PAY, SG_KIND_COUNT };
+enum { LIGHT_TUESDAY, LIGHT_DUST, LIGHT_DARK };
+/* floor tiles on the 0.6 unit grid (section 2.2) and the things laid on top of them (2.4) */
+enum { T_WHITE, T_ORANGE, T_RED, T_CHECK, T_GREY, T_TERRAZZO, T_MAT, T_GHOST };
+enum { OV_LASER_MAT, OV_TAPE_LINE, OV_TAPE_RING, OV_FRAME, OV_RUG };
+
+typedef struct { const char *label; float x, z, hw, hd, ry; uint8_t face; bool present, always_label; } st_place_t;
+typedef struct { uint8_t kind; float x, z, hw, hd, ry; } obst_t;
+typedef struct { uint8_t kind, arg; float x, y, z, ry; const char *text; } prop_t;   /* arg: plant 0 alive 1 dead; text: aframe copy */
+typedef struct { uint8_t kind; const char *text; float x, y, z, ry, w, h; } sign_t;
+typedef struct { uint8_t kind, c, r, cw, rh, ring; } accent_t;                        /* tile rect; ring 1 paints the one tile border only */
+typedef struct { uint8_t kind; float x0, z0, x1, z1; } overlay_t;
+typedef struct { const char *text; float x, z; uint8_t font; bool warn, on_grey; } stencil_t;
+typedef struct { float x0, z0, x1, z1; } box_t;
+
+typedef struct {
+  uint32_t sky, ground; float hemi;
+  uint32_t sun_col; float sun_i, sun_x, sun_y, sun_z, bias;
+  struct { uint32_t col; float i, dist; } p[4];      /* kitchen, bench, laser (idle), hall; positions derive from stations */
+  float pendant_e, tube_e, laser_idle;
+  uint32_t grout, wash_col; int wash_a;
+  float hud_tint; uint32_t tint_col;
+} lighting_t;
+
+typedef struct {
+  float len; int clock_h0, clock_span;                 /* 180, 19, 3: CLASSIC reads 7 PM to 10 PM */
+  int weight[EVENT_ROWS]; int first_event_forced;      /* -1, or a row index fired first */
+  float first_event, event_gap, event_jit;             /* 14, 17, 8 */
+  float first_newbie, newbie_gap, newbie_jit, newbie_until;   /* 6, 13, 7, 0 (0: all night) */
+  int max_waiting, bike_one_in; float patience, member_life;  /* 3, 3, 20, 40 */
+  int greet_karma; float greet_vibe, leave_vibe;       /* 100, 8, -12 */
+  float dish_gap, first_donation, donation_gap, donation_jit;  /* 6, 24, 24, 10 */
+  int start_dishes, start_sawdust, start_scrap, start_donations, start_boxes; float start_bath;  /* 3, 2, 1, 1, 0, 20 (plus rnd 30 at night start) */
+  float rush_time, rush_players;                       /* 0.8, 0.12 */
+  float cut_dust, cut_dust_rnd, haboob_dust;           /* 26, 12, 45 */
+  float vibe_start, vibe_entropy, vibe_heal; int landlord_limit;   /* 70, 0.12, 0.15, 50 */
+  float storage_gap, book_gap, box_gap;                /* 40, 50, 40 */
+  float speed_mul; bool door_open_at_start; float gust_gap, gust_jit;   /* 1.0, false, 0, 0 */
+  bool fridge_locked; int solo_bots[2];                /* false, BUILDER, TALKER */
+} night_t;
+
+typedef struct {
+  const char *name, *blurb;
+  float door_x, door_z, door_hw;
+  box_t newbie_box, wander_box, spot_box, doormat_box, puddle_box, streak_box;
+  float lobby_x, lobby_z, start_x, start_z;
+  st_place_t st[ST_COUNT];
+  obst_t ob[MAX_OBST]; int ob_n;
+  prop_t props[MAX_PROPS]; int prop_n;
+  sign_t signs[MAX_SIGNS]; int sign_n;
+  accent_t accents[MAX_ACCENTS]; int accent_n;
+  overlay_t overlays[MAX_OVERLAYS]; int overlay_n;
+  stencil_t stencils[MAX_STENCILS]; int stencil_n;
+  lighting_t light;
+  night_t night;
+} level_t;
+
+extern level_t LEVELS[LEVEL_COUNT];
+extern const level_t *L;                 /* the active level */
+void levels_init(void);                  /* levels.c: fills the tables and the derived fields */
+void game_set_level(int idx);            /* levels.c: L, G.level, L->st into S[] */
 
 uint32_t rnd(void);
 float frnd(void);

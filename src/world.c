@@ -455,12 +455,28 @@ static void build_stations(void) {
   t3_release(scr_g); t3_release(scr_b); t3_release(scr_a);
 }
 
-/* furniture that blocks the way but does nothing (OBST in game.c) */
+/* furniture that blocks the way but does nothing. Collision comes from the
+ * level (L->ob in game.c); these models still stand where the old room put
+ * them until build_furniture is rebuilt as a loop over L->ob by kind. */
+typedef struct { float x, z; } old_obst_t;
+enum { OB_SAW, OB_SHELF, OB_COFFEE, OB_KTABLE, OB_TV, OB_CTABLE, OB_ISLAND, OB_LATHE, OB_MILL, OB_COUNT };
+static const old_obst_t OBST[OB_COUNT] = {
+  [OB_SAW]    = { -8.0f, -5.7f },    /* table saw */
+  [OB_SHELF]  = { -11.55f, -2.0f },  /* parts shelving */
+  [OB_COFFEE] = { -11.15f, -0.2f },  /* coffee cabinet */
+  [OB_KTABLE] = { -8.3f, 2.4f },     /* kitchen table */
+  [OB_TV]     = { -4.6f, 6.25f },    /* the lounge TV */
+  [OB_CTABLE] = { -2.75f, 3.55f },   /* side table */
+  [OB_ISLAND] = { -2.0f, -1.8f },    /* assembly table */
+  [OB_LATHE]  = { 11.15f, -5.2f },
+  [OB_MILL]   = { 11.1f, -2.9f },
+};
+
 static void build_furniture(void) {
   t3_material *green = mat(0x5f8a73, 0.6f, 0.3f), *woodtop = mat(0xa57c4f, 0.75f, 0);
   t3_material *red = mat(0xc23b2a, 0.6f, 0.2f), *mug = mat(0xece3d3, 0.5f, 0), *blk = mat(0x14110d, 0.3f, 0.2f);
   t3_material *tvs = emis(0x8fbde6, 1.2f);
-  const obst_t *o;
+  const old_obst_t *o;
   t3_object *g;
 
   o = &OBST[OB_SAW]; g = group_at(&SC->base, o->x, o->z);                   /* the table saw */

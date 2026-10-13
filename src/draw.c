@@ -174,7 +174,7 @@ static void fx_draw(float dt) {
 static void station_labels(void) {
   for (int i = 0; i < ST_COUNT; i++) {
     station_t *s = &S[i];
-    if (i == ST_COUCH || i == ST_TABLE) continue;
+    if (i == ST_COUCH || i == ST_TABLE || !s->present) continue;
     int sx, sy;
     float top = i == ST_FRIDGE ? 2.4f : i == ST_LUMBER ? 2.1f : (i >= ST_PRINT1 && i <= ST_PRINT2) ? 2.0f : 1.3f;
     if (!project(s->x, top, s->z, &sx, &sy)) continue;

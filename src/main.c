@@ -91,6 +91,7 @@ static void load_config(void) {
   }
   if (secs[0]) G.night_len = (float)atof(secs);
   if (!(G.night_len >= 20 && G.night_len <= 3600)) G.night_len = 180;
+  LEVELS[0].night.len = G.night_len;   /* night_seconds scales the classic night only; other levels keep their own length */
   static const char L[] = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   for (int i = 0; i < 4; i++) G.room[i] = L[rnd() % (sizeof L - 1)];
   G.room[4] = 0;
