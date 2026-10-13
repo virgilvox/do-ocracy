@@ -1587,7 +1587,8 @@ void game_update(float dt) {
     G.next_newbie = (nt->newbie_gap + frnd() * nt->newbie_jit) * G.pace;
   }
   if ((G.next_dish -= dt) <= 0) { if (S[ST_SINK].present && S[ST_SINK].count < 10) S[ST_SINK].count++; G.next_dish = nt->dish_gap * G.pace; }
-  if ((G.next_donation -= dt) <= 0) { spawn_donation(); G.next_donation = (nt->donation_gap + frnd() * nt->donation_jit) * G.pace; }
+  if (nt->donation_gap > 0 && (G.next_donation -= dt) <= 0) { spawn_donation();   /* a gap of 0: no donations tonight */
+    G.next_donation = (nt->donation_gap + frnd() * nt->donation_jit) * G.pace; }
   station_t *so = &S[ST_STORAGE], *li = &S[ST_LIBRARY];
   if (so->present && nt->storage_gap > 0 && (G.next_storage -= dt) <= 0) {   /* one more box; a full shelf gives up */
     if (so->count >= 6) storage_spill(); else so->count++;

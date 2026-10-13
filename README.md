@@ -32,6 +32,8 @@ When nobody is playing, the cabinet runs an attract mode. Three archetypes play 
 
 The floor plan is a working makerspace, zone by zone: the wood shop and lumber rack at the back left (OSB floor, sawdust, a table saw), the laser on its hazard-taped mat, the printing counter with Ouch, Dr. Strange and Sir Cutsalot, the electronics bench on its ESD mat, the metal shop on the right wall (a lathe, a mill that is not a Bridgeport) by the alley door and the dumpster, a checkerboard kitchen with the coffee station and a table, the lounge with the lurker couch, the work island and the assembly table in the middle, Show & Tell in the front window, and the Free Pile by the door. Brick walls, strip lights, string lights, a bike on the wall, the whiteboard that says GOTO 1.
 
+There are five nights, picked with ROOM in SETTINGS: CLASSIC TUESDAY, OPEN HOUSE (noon, crowds, LEGO Day, no welding), HABOOB NIGHT (dust everywhere, the back door will not stay shut), MOVE NIGHT (the wood shop moved again, boxes) and LATE NIGHT (after ten, dark, the fridge is locked, someone is asleep on the couch). The attract demo always plays CLASSIC TUESDAY.
+
 Station labels are level data (src/levels.c) and use the lab's public tool names: LARGE 80W LASER, OUCH, DR. STRANGE, SIR CUTSALOT. The old joke names are retired everywhere.
 
 The floor and walls are textures painted at startup with the HUD's own drawing routines, so there are no image files in the cart.

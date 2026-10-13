@@ -591,7 +591,10 @@ static void top_bar(void) {
   hud_panel(16, 6, 300, 56, C_SLAB, C_STEEL_HI);
   hud_logo(20, 9, 50, C_BONE);
   if (G.phase != PH_NIGHT) {
-    hud_text(F_H2, 74, 14, "7:00 PM", C_BONE, 255, AL_LEFT);
+    char clk[16];
+    clock_str(clk, sizeof clk);   /* the level's opening hour */
+    int dw = hud_text_w(F_MONO_S, "DOORS OPEN"), cf = 74 + hud_text_w(F_H2, clk) + 8 < 306 - dw ? F_H2 : F_H3;
+    hud_text(cf, 74, cf == F_H2 ? 14 : 24, clk, C_BONE, 255, AL_LEFT);   /* 12:00 PM does not fit beside the label in F_H2 */
     hud_text(F_MONO_S, 306, 10, "DOORS OPEN", C_ASH, 255, AL_RIGHT);
     return;   /* the lobby panel takes the meters' place */
   }
@@ -623,6 +626,7 @@ static void top_bar(void) {
   meter(640, 12, 274, "VIBE", 898, 906, GL_HEART, G.vibe < 25 ? C_FAULT : C_LIVE, 255, G.vibe, G.vibe < 25 ? C_FAULT : C_LIVE, r, C_ASH);
   if (G.fire_warn > 0 && fmodf(T, 0.5f) < 0.25f) hud_frame(0, 0, HUD_W, HUD_H, 12, C_FAULT, 220);
   if (G.heat > 0) hud_rect(0, 0, HUD_W, HUD_H, 0xff7a1a, 28);
+  else if (L->light.hud_tint > 0) hud_rect(0, 0, HUD_W, HUD_H, L->light.tint_col, (int)(28 * L->light.hud_tint));   /* the dust, all night */
 }
 
 static void player_cards(void) {
@@ -994,7 +998,13 @@ static void menu_modes(float dt) {
 
 static const char *settings_value(int row, char *b, int n) {
   switch (row) {
-    case SET_ROW_NIGHT: return NIGHT_LENS[SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1].name;
+    case SET_ROW_NIGHT:
+      if (SET.night_len == 1) {   /* NORMAL is the chosen room's own length */
+        int len = (int)LEVELS[SET.layout < LEVEL_COUNT ? SET.layout : 0].night.len;
+        snprintf(b, (size_t)n, "NORMAL %d:%02d", len / 60, len % 60);
+        return b;
+      }
+      return NIGHT_LENS[SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1].name;
     case SET_ROW_BOTS: return ONOFF[SET.bots & 1];
     case SET_ROW_CHAOS: return CHAOS_NAMES[SET.chaos <= CHAOS_CHAOS ? SET.chaos : 1];
     case SET_ROW_PHONES: return ONOFF[SET.phones & 1];
@@ -1020,29 +1030,109 @@ static int settings_chevrons(int row) {
   return (v > 0 ? 1 : 0) | (v < n - 1 ? 2 : 0);
 }
 
-static void layout_preview(int idx) {
-  const level_t *lv = &LEVELS[idx < LEVEL_COUNT ? idx : 0];
-  const float sc = 14.3f;
-  #define MX(x) (864 + (int)(((x) + 12.3f) * sc))
-  #define MY(z) (200 + (int)(((z) + 7.15f) * sc))
-  hud_rect(MX(-12.3f), MY(-7.15f), (int)(24.6f * sc), (int)(14.3f * sc), C_CHAR, 255);
-  hud_frame(MX(-12.3f) - 2, MY(-7.15f) - 2, (int)(24.6f * sc) + 4, (int)(14.3f * sc) + 4, 2, C_STEEL_HI, 255);
+/* 11.3: the level's floor as a thumb, px pixels per 0.6 unit tile. White tile
+ * with the accents, the shop grey, furniture as char blocks, the stations as
+ * steel blocks framed amber (clout) or teal (karma), the door as a bone gap. */
+static void tile_thumb(const level_t *lv, int x0, int y0, int px) {
+  static const uint32_t TK[] = { 0xd9d3c7, 0xd9672b, 0xb23a2e, 0, 0x68645f, 0x7d6e5e, 0xc8c2b6, 0xe2dcd0 };
+  uint8_t t[41][24];
+  memset(t, T_WHITE, sizeof t);
+  for (int i = 0; i < lv->accent_n; i++) {
+    const accent_t *a = &lv->accents[i];
+    for (int c = a->c; c < a->c + a->cw && c < 41; c++)
+      for (int r = a->r; r < a->r + a->rh && r < 24; r++) {
+        bool edge = c == a->c || r == a->r || c == a->c + a->cw - 1 || r == a->r + a->rh - 1;
+        if (a->ring && !edge) continue;
+        t[c][r] = a->kind == T_CHECK ? (((c + r) & 1) ? T_ORANGE : T_RED) : a->kind;
+      }
+  }
+  hud_rect(x0 - 2, y0 - 2, 41 * px + 4, 24 * px + 4, C_CHAR, 255);
+  int g = px >= 6 ? 1 : 0;
+  for (int c = 0; c < 41; c++) for (int r = 0; r < 24; r++) hud_rect(x0 + c * px, y0 + r * px, px - g, px - g, TK[t[c][r]], 255);
+  #define TX(x) (x0 + (int)(((x) + 12.3f) / 0.6f * px))
+  #define TY(z) (y0 + (int)(((z) + 7.15f) / 0.6f * px))
   for (int i = 0; i < lv->ob_n; i++) {
     const obst_t *o = &lv->ob[i];
-    hud_rect(MX(o->x - o->hw), MY(o->z - o->hd), (int)(2 * o->hw * sc) + 1, (int)(2 * o->hd * sc) + 1, C_STEEL, 255);
+    hud_rect(TX(o->x - o->hw), TY(o->z - o->hd), TX(o->x + o->hw) - TX(o->x - o->hw), TY(o->z + o->hd) - TY(o->z - o->hd), o->kind == OBK_FENCE ? C_STEEL : C_CHAR, 255);
   }
+  int fw = px >= 6 ? 2 : 1;
   for (int i = 0; i < ST_COUNT; i++) {
     const st_place_t *p = &lv->st[i];
     if (!p->present || i == ST_SWITCH) continue;
-    bool clout = i <= ST_BENCH || i == ST_SHOW;
-    hud_frame(MX(p->x - p->hw), MY(p->z - p->hd), (int)(2 * p->hw * sc) + 1, (int)(2 * p->hd * sc) + 1, 2, clout ? C_HAZARD : C_LIVE, 255);
+    bool clout = i <= ST_BENCH || i == ST_SHOW || i == ST_FORGE || i == ST_SEWING;
+    int x = TX(p->x - p->hw), y = TY(p->z - p->hd), w = TX(p->x + p->hw) - x, h = TY(p->z + p->hd) - y;
+    if (w < 2 * fw + 1) w = 2 * fw + 1;
+    if (h < 2 * fw + 1) h = 2 * fw + 1;
+    hud_rect(x, y, w, h, C_STEEL, 255);
+    hud_frame(x, y, w, h, fw, clout ? C_HAZARD : C_LIVE, 255);
   }
-  /* the front door: a bone gap in the street wall */
-  hud_rect(MX(lv->door_x - lv->door_hw), MY(7.15f) - 1, (int)(2 * lv->door_hw * sc), 5, C_BONE, 255);
-  #undef MX
-  #undef MY
-  hud_text(F_H3, 864, 420, lv->name, C_BONE, 255, AL_LEFT);
-  hud_text_wrap(F_MONO_S, 864, 456, 352, lv->blurb, C_ASH, 255, 20);
+  hud_rect(TX(lv->door_x - lv->door_hw), y0 + 24 * px - 1, TX(lv->door_x + lv->door_hw) - TX(lv->door_x - lv->door_hw), 4, C_BONE, 255);
+  #undef TX
+  #undef TY
+}
+
+static void layout_preview(int idx) {
+  const level_t *lv = &LEVELS[idx < LEVEL_COUNT ? idx : 0];
+  tile_thumb(lv, 864, 200, 8);                              /* 328 x 192 */
+  hud_text(F_H3, 864, 412, lv->name, C_BONE, 255, AL_LEFT);
+  hud_text_wrap(F_MONO_S, 864, 448, 352, lv->blurb, C_ASH, 255, 20);
+}
+
+/* the three fact lines of the level card (11.3) */
+static const char *level_newbies(const level_t *lv) {
+  if (lv->night.newbie_until > 0) return "NONE";
+  return lv->night.newbie_gap < 10 ? "CROWDS" : lv->night.newbie_gap <= 15 ? "STEADY" : "FEW";
+}
+static const char *level_events(const level_t *lv) {
+  const int *w = lv->night.weight;
+  int top = 0;
+  for (int i = 1; i < EVENT_ROWS; i++) if (w[i] > w[top]) top = i;
+  if (w[16] == w[top]) return "BOXES";
+  if (top == 4) return w[3] == w[4] ? "THE USUAL" : "DUST";
+  if (top == 10) return "THE FRIDGE";
+  if (top == 5 || top == 8) return "TACOS";
+  return "THE USUAL";
+}
+
+/* the level card in the lobby: which night this is, at 4 px per tile */
+static void level_card(void) {
+  const int x = 16, y = 146, w = 200;
+  int bh = 0;
+  {   /* measure the blurb the way hud_text_wrap breaks it */
+    char line[96] = "", trial[160]; const char *p = L->blurb; int lines = 0;
+    while (*p) {
+      char word[48]; int wn = 0;
+      while (*p == ' ') p++;
+      while (*p && *p != ' ' && wn < 47) word[wn++] = *p++;
+      word[wn] = 0;
+      if (!wn) break;
+      snprintf(trial, sizeof trial, line[0] ? "%s %s" : "%s%s", line, word);
+      if (line[0] && hud_text_w(F_MONO_S, trial) > w - 28) { lines++; snprintf(line, sizeof line, "%s", word); }
+      else snprintf(line, sizeof line, "%s", trial);
+    }
+    bh = (lines + (line[0] ? 1 : 0)) * 16;
+  }
+  hud_panel(x, y, w, 156 + bh + 80, C_SLAB, C_STEEL_HI);
+  char b[48];
+  snprintf(b, sizeof b, "ROOM %d OF %d", G.level + 1, LEVEL_COUNT);
+  hud_eyebrow(x + 14, y + 10, b, C_ASH, AL_LEFT);
+  hud_text(F_MONO, x + 14, y + 26, L->name, C_HAZARD, 255, AL_LEFT);
+  tile_thumb(L, x + 18, y + 52, 4);                         /* 164 x 96 */
+  int ty = y + 156 + hud_text_wrap(F_MONO_S, x + 14, y + 156, w - 28, L->blurb, C_BONE, 255, 16);
+  int h0 = L->night.clock_h0 % 24, h1 = (L->night.clock_h0 + L->night.clock_span) % 24;
+  int len = (int)G.night_len;
+  snprintf(b, sizeof b, "%d %s TO %d %s", h0 % 12 ? h0 % 12 : 12, h0 < 12 ? "AM" : "PM", h1 % 12 ? h1 % 12 : 12, h1 < 12 ? "AM" : "PM");
+  hud_text(F_MONO_S, x + 14, ty + 6, b, C_ASH, 255, AL_LEFT);
+  snprintf(b, sizeof b, "%d:%02d", len / 60, len % 60);
+  hud_text(F_MONO_S, x + w - 14, ty + 6, b, C_BONE, 255, AL_RIGHT);
+  int present = 0;
+  for (int i = 0; i < ST_COUNT; i++) present += L->st[i].present;
+  snprintf(b, sizeof b, "NEWBIES: %s", level_newbies(L));
+  hud_text(F_MONO_S, x + 14, ty + 24, b, C_ASH, 255, AL_LEFT);
+  snprintf(b, sizeof b, "EVENTS: %s", level_events(L));
+  hud_text(F_MONO_S, x + 14, ty + 40, b, C_ASH, 255, AL_LEFT);
+  snprintf(b, sizeof b, "STATIONS: %d OF %d", present, ST_COUNT);
+  hud_text(F_MONO_S, x + 14, ty + 56, b, C_ASH, 255, AL_LEFT);
 }
 
 static void settings_help(int row) {
@@ -1455,7 +1545,10 @@ static void lobby_overlay(float dt) {
   int mode = G.mode >= 0 && G.mode < MODE_COUNT ? G.mode : 0;
   hud_text(F_H3, 346, 26, MODE_LOBBY_NAMES[mode], C_BONE, 255, AL_LEFT);
   int li = mode == MODE_CHAOS ? 0 : SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1;
-  hud_text(F_MONO_S, 914, 36, NIGHT_LENS[li].name, C_ASH, 255, AL_RIGHT);
+  char ln[32];
+  if (li == 1) snprintf(ln, sizeof ln, "NORMAL %d:%02d", (int)G.night_len / 60, (int)G.night_len % 60);
+  else snprintf(ln, sizeof ln, "%s", NIGHT_LENS[li].name);
+  hud_text(F_MONO_S, 914, 36, ln, C_ASH, 255, AL_RIGHT);
   join_strip_k(0);
   /* doors open in: a chip and a tape that shrinks from the right */
   if (M.ready_t <= 0 && G.wipe_t <= 0) {
@@ -1474,6 +1567,7 @@ static void lobby_overlay(float dt) {
   x = footer_hint(x, 108, seat_cap(M.owner, 2), "PROPOSE");
   footer_hint(x, 108, seat_cap(M.owner, 3), "READY");
   if (M.status_t > 0) hud_text_sh(F_MONO, 640, 146, M.status, C_ASH, M.status_t < 0.3f ? (int)(255 * M.status_t / 0.3f) : 255, AL_CENTER);
+  if (M.ready_t <= 0) level_card();
   lobby_cards(dt);
   countdown();
 }

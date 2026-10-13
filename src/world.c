@@ -112,7 +112,9 @@ static t3_texture *hud_texture(int w, int h) {
 static t3_mesh *sign_on(void *parent, t3_texture *t, float w, float h, float x, float y, float z, float ry) {
   t3_material *m = t3_mesh_basic_material_new(0xffffff);
   t3_material_set_map(m, t);
-  t3_mesh *me = t3_mesh_new(t3_plane_geometry_new(w, h, 1, 1), m);
+  t3_geometry *geo = t3_plane_geometry_new(w, h, 1, 1);
+  t3_mesh *me = t3_mesh_new(geo, m);
+  t3_release(geo);   /* the mesh holds it; without this every rebuild leaked the plane */
   t3_object_set_position(me, x, y, z);
   t3_object_set_rotation(me, 0, ry, 0);
   t3_object_add(parent, me);
@@ -395,7 +397,9 @@ static t3_mesh *lit_plane(t3_texture *t, float w, float h, float x, float y, flo
   t3_material *m = t3_mesh_standard_material_new(0xffffff);
   m->roughness = 0.9f;
   t3_material_set_map(m, t);
-  t3_mesh *me = t3_mesh_new(t3_plane_geometry_new(w, h, 1, 1), m);
+  t3_geometry *geo = t3_plane_geometry_new(w, h, 1, 1);
+  t3_mesh *me = t3_mesh_new(geo, m);
+  t3_release(geo);   /* the mesh holds it; without this every rebuild leaked the plane */
   t3_object_set_position(me, x, y, z);
   t3_object_set_rotation(me, rx, ry, 0);
   me->base.receive_shadow = true;
@@ -1019,15 +1023,15 @@ static void build_furniture(const level_t *lv) {
         CYL(g, m_screen, 0.07f, 0.15f, 0.05f, 0.985f, 0.05f);
         for (int k = 0; k < 3; k++) CYL(g, m_bone, 0.05f, 0.1f, 0.15f, 0.96f, 0.25f + k * 0.13f);
         break;
-      case OBK_LEGO:                                         /* the LEGO table */
-        BOX(g, m_white, w, 0.05f, d, 0, 0.75f, 0);
-        for (int k = 0; k < 4; k++) BOX(g, m_steel_hi, 0.05f, 0.73f, 0.05f, k & 1 ? o->hw - 0.1f : -o->hw + 0.1f, 0.365f, k < 2 ? -o->hd + 0.1f : o->hd - 0.1f);
-        BOX(g, m_cord, 0.5f, 0.4f, 0.4f, -0.5f, 0.98f, 0);
-        {
-          t3_material *bm[4] = { m_red, m_info, m_cord, m_green };
-          for (int k = 0; k < 6; k++) BOX(g, bm[k % 4], 0.16f, 0.1f, 0.08f, 0.2f + (k % 3) * 0.22f, 0.825f, -0.2f + (k / 3) * 0.3f);
-        }
+      case OBK_LEGO: {                                       /* the LEGO table; on LEGO Day the footprint holds the crowd behind it */
+        float td = fminf(d, 1.2f), tz = o->hd - td / 2;
+        BOX(g, m_white, w, 0.05f, td, 0, 0.75f, tz);
+        for (int k = 0; k < 4; k++) BOX(g, m_steel_hi, 0.05f, 0.73f, 0.05f, k & 1 ? o->hw - 0.1f : -o->hw + 0.1f, 0.365f, tz + (k < 2 ? -td / 2 + 0.1f : td / 2 - 0.1f));
+        BOX(g, m_cord, 0.5f, 0.4f, 0.4f, -0.5f, 0.98f, tz);
+        t3_material *bm[4] = { m_red, m_info, m_cord, m_green };
+        for (int k = 0; k < 6; k++) BOX(g, bm[k % 4], 0.16f, 0.1f, 0.08f, 0.2f + (k % 3) * 0.22f, 0.825f, tz - 0.2f + (k / 3) * 0.3f);
         break;
+      }
       case OBK_HOST:                                         /* the host desk and the waiver computer */
         BOX(g, m_plywood, w, 0.05f, d, 0, 0.75f, 0);
         BOX(g, m_plywood, 0.05f, 0.73f, d, -o->hw + 0.05f, 0.365f, 0);
@@ -1127,6 +1131,10 @@ static void build_props(const level_t *lv) {
         rot(BOX(g, m_bone, 0.6f, 0.9f, 0.03f, 0, 0.45f, 0.13f), -0.3f, 0, 0);
         rot(BOX(g, m_bone, 0.6f, 0.9f, 0.03f, 0, 0.45f, -0.13f), 0.3f, 0, 0);
         BOX(g, m_char, 0.62f, 0.04f, 0.04f, 0, 0.9f, 0);
+        if (p->text) for (int k = 0; k < 2; k++) {           /* the chalk copy on both faces */
+          t3_mesh *me = sign_on(g, plaque(128, 160, C_CHAR, C_BONE, F_MONO, p->text), 0.48f, 0.6f, 0, 0.47f, k ? -0.15f : 0.15f, k ? 3.1415927f : 0);
+          t3_object_set_rotation(me, k ? 0.3f : -0.3f, k ? 3.1415927f : 0, 0);
+        }
         break;
       case PR_BIKERACK:                                      /* four inverted U tubes at 0.6 pitch, a bike per slot */
         for (int k = 0; k < 4; k++) {
@@ -1282,6 +1290,12 @@ static void build_signs(const level_t *lv) {
         tx = hud_texture(512, 256);
         break;
       }
+      case SG_LEAN:     tx = plaque(256, 128, 0xe07a2a, C_CHAR, F_MONO_S, t); break;   /* a tile nobody rehung */
+      case SG_OLD:                                           /* a tile for a shop that is not here any more */
+        plaque_paint(256, 128, 0xe07a2a, C_CHAR, F_MONO_S, t);
+        hud_tape(0, 50, 256, 28, 0);
+        tx = hud_texture(256, 128);
+        break;
       case SG_WC:       tx = plaque(64, 64, C_BONE, C_CHAR, F_MONO, t); break;
       case SG_PAY:      tx = plaque(128, 64, C_BONE, C_CHAR, F_MONO_S, t); break;
       default: break;
@@ -1294,7 +1308,13 @@ static void build_signs(const level_t *lv) {
       const st_place_t *bd = &lv->st[ST_BACKDOOR];
       sign(tx, sg->w, sg->h, bd->x + sg->x, sg->y, bd->z + sg->z, sg->ry);
     } else {
-      sign(tx, sg->w, sg->h, sg->x, sg->y, sg->z, sg->ry);
+      t3_mesh *me = sign(tx, sg->w, sg->h, sg->x, sg->y, sg->z, sg->ry);
+      if (sg->kind == SG_LEAN) t3_object_set_rotation(me, -0.3f, sg->ry, 0);   /* leaning back against what is behind it */
+      if (sg->kind == SG_OPEN) {                                              /* the neon switched off at close */
+        float e = lv->light.open_e > 0 ? lv->light.open_e : 1;
+        int v = (int)(255 * powf(fminf(1, e), 1 / 2.2f));
+        me->materials[0]->color = t3_color_hex((uint32_t)(v << 16 | v << 8 | v));
+      }
     }
   }
 }

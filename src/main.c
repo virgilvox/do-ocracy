@@ -1029,6 +1029,7 @@ static void flow(float dt) {
     case PH_TITLE:
       /* attract mode: three archetypes play a night behind the menus */
       if (G.t > 1.5f) {
+        if (G.level != 0) { game_set_level(0); game_reset_world(); world_set_level(L); }   /* the attract always plays level 0 */
         G.attract = true;
         game_add_bot(BOT_BUILDER); game_add_bot(BOT_TALKER); game_add_bot(BOT_FOUNDER);
         game_start_night();

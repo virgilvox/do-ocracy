@@ -261,11 +261,11 @@ extern station_t S[ST_COUNT];
  * the night script. src/levels.c holds the tables; game_set_level copies the
  * station places into S[] and the simulation reads everything else through L. */
 #define MAX_OBST 24
-#define MAX_PROPS 48
+#define MAX_PROPS 56
 #define MAX_SIGNS 32
 #define MAX_ACCENTS 24
 #define MAX_OVERLAYS 12
-#define MAX_STENCILS 8
+#define MAX_STENCILS 10
 #define EVENT_ROWS 25
 #define LEVEL_COUNT 5
 
@@ -280,7 +280,7 @@ enum { PR_PENDANT, PR_TUBE, PR_FAN, PR_EXTINGUISHER, PR_FIRSTAID, PR_SAFETYGLASS
        PR_SLEEPER, PR_VISITOR, PR_KIND_COUNT };
 /* signs: painted textures hung on walls and furniture */
 enum { SG_LOCKUP, SG_FACADE, SG_TILE, SG_TRIPTYCH, SG_WIFI, SG_EXIT, SG_108, SG_GAS, SG_CAUTION, SG_DARKROOM, SG_PASSES,
-       SG_UPSTAIRS, SG_OPEN, SG_PEGBOARD, SG_WC, SG_PAY, SG_KIND_COUNT };
+       SG_UPSTAIRS, SG_OPEN, SG_PEGBOARD, SG_WC, SG_PAY, SG_LEAN, SG_OLD, SG_KIND_COUNT };
 enum { LIGHT_TUESDAY, LIGHT_DUST, LIGHT_DARK };
 /* floor tiles on the 0.6 unit grid (section 2.2) and the things laid on top of them (2.4) */
 enum { T_WHITE, T_ORANGE, T_RED, T_CHECK, T_GREY, T_TERRAZZO, T_MAT, T_GHOST };
@@ -302,6 +302,7 @@ typedef struct {
   float pendant_e, tube_e, laser_idle;
   uint32_t grout, wash_col; int wash_a;
   float hud_tint; uint32_t tint_col;
+  float open_e;                                        /* the OPEN neon: 1 lit, 0.2 switched off at close */
 } lighting_t;
 
 typedef struct {

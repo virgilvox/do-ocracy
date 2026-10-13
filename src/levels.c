@@ -21,6 +21,7 @@
 #include "game.h"
 #include "hud.h"
 #include <string.h>
+#include <math.h>
 
 #define PI_2 1.5707963f
 #define PI_1 3.1415927f
@@ -205,11 +206,10 @@ level_t LEVELS[LEVEL_COUNT] = {
       .p = { { 0xffc07a, 11, 8 }, { 0x8fbde6, 10, 8 }, { 0xff3b2a, 0, 6 }, { 0xffd9a8, 10, 9 } },
       .pendant_e = 2.5f, .tube_e = 2.2f, .laser_idle = 0,
       .grout = 0x9c968a, .wash_col = 0, .wash_a = 0,
-      .hud_tint = 0, .tint_col = 0,
+      .hud_tint = 0, .tint_col = 0, .open_e = 1,
     },
 
-    /* 6.7 and 6.8: the CLASSIC night. Event rows follow section 5.15; rows the
-     * game does not have yet (13 to 24) are ignored by fire_event until they land. */
+    /* 6.7 and 6.8: the CLASSIC night. Event rows follow section 5.15 in order. */
     .night = {
       .len = 180, .clock_h0 = 19, .clock_span = 3,
       .weight = { 1, 1, 1, 3, 3, 3, 3, 3, 3, 2, 3, 2, 2, 2, 1, 1, 1, 2, 2, 1, 0, 2, 2, 2, 1 },
@@ -232,15 +232,196 @@ level_t LEVELS[LEVEL_COUNT] = {
 
 const level_t *L = &LEVELS[0];
 
-/* 6.1: the other four nights. They play as copies of CLASSIC TUESDAY until
- * their section 6 deltas (geometry, the DUST and DARK presets, the night
- * columns) are applied here. */
-static const struct { const char *name, *blurb; } META[LEVEL_COUNT] = {
-  { "CLASSIC TUESDAY", "AN ORDINARY OPEN NIGHT. DOORS LOCK AT TEN." },
-  { "OPEN HOUSE",      "FIRST SATURDAY. EVERYONE CAME. SAY HI TO ALL OF THEM." },
-  { "HABOOB NIGHT",    "A WALL OF DESERT. IT IS INSIDE NOW. SWEEP." },
-  { "MOVE NIGHT",      "THE WOOD SHOP MOVED AGAIN. THIRD TIME. BOXES." },
-  { "LATE NIGHT",      "AFTER TEN. CARD ACCESS ONLY. THE FRIDGE IS AWAKE." },
+/* ── section 6: the other four nights, as deltas applied to copies of level 0 ── */
+
+static int find_ob(level_t *lv, int kind, float x) {         /* an obstacle by kind, nearest to x */
+  int best = -1;
+  for (int i = 0; i < lv->ob_n; i++)
+    if (lv->ob[i].kind == kind && (best < 0 || fabsf(lv->ob[i].x - x) < fabsf(lv->ob[best].x - x))) best = i;
+  return best;
+}
+static void move_ob(level_t *lv, int kind, float from_x, float x, float z, float hw, float hd) {
+  int i = find_ob(lv, kind, from_x);
+  if (i >= 0) { lv->ob[i].x = x; lv->ob[i].z = z; lv->ob[i].hw = hw; lv->ob[i].hd = hd; }
+}
+static void drop_ob(level_t *lv, int kind) {
+  int i = find_ob(lv, kind, 0);
+  if (i < 0) return;
+  for (int k = i; k < lv->ob_n - 1; k++) lv->ob[k] = lv->ob[k + 1];
+  lv->ob_n--;
+}
+static void add_ob(level_t *lv, obst_t o) { if (lv->ob_n < MAX_OBST) lv->ob[lv->ob_n++] = o; }
+static void add_prop(level_t *lv, prop_t p) { if (lv->prop_n < MAX_PROPS) lv->props[lv->prop_n++] = p; }
+static void drop_props(level_t *lv, int kind, float y_min) {   /* every prop of a kind standing at y_min or higher */
+  int n = 0;
+  for (int i = 0; i < lv->prop_n; i++)
+    if (!(lv->props[i].kind == kind && lv->props[i].y >= y_min)) lv->props[n++] = lv->props[i];
+  lv->prop_n = n;
+}
+static sign_t *find_sign(level_t *lv, int kind, const char *text) {
+  for (int i = 0; i < lv->sign_n; i++)
+    if (lv->signs[i].kind == kind && (!text || (lv->signs[i].text && !strcmp(lv->signs[i].text, text)))) return &lv->signs[i];
+  return NULL;
+}
+static void add_sign(level_t *lv, sign_t s) { if (lv->sign_n < MAX_SIGNS) lv->signs[lv->sign_n++] = s; }
+static accent_t *find_accent(level_t *lv, int c, int r) {
+  for (int i = 0; i < lv->accent_n; i++) if (lv->accents[i].c == c && lv->accents[i].r == r) return &lv->accents[i];
+  return NULL;
+}
+static void drop_accent(level_t *lv, int c, int r) {
+  accent_t *a = find_accent(lv, c, r);
+  if (!a) return;
+  int i = (int)(a - lv->accents);
+  for (int k = i; k < lv->accent_n - 1; k++) lv->accents[k] = lv->accents[k + 1];
+  lv->accent_n--;
+}
+static void add_accent(level_t *lv, accent_t a) { if (lv->accent_n < MAX_ACCENTS) lv->accents[lv->accent_n++] = a; }
+static void add_overlay(level_t *lv, overlay_t o) { if (lv->overlay_n < MAX_OVERLAYS) lv->overlays[lv->overlay_n++] = o; }
+static void add_stencil(level_t *lv, stencil_t s) { if (lv->stencil_n < MAX_STENCILS) lv->stencils[lv->stencil_n++] = s; }
+static void place(level_t *lv, int st, float x, float z, float hw, float hd, float ry) {
+  st_place_t *p = &lv->st[st];
+  p->x = x; p->z = z; p->hw = hw; p->hd = hd; p->ry = ry;
+}
+static void set_weights(level_t *lv, const int *w) { memcpy(lv->night.weight, w, sizeof lv->night.weight); }
+
+/* 6.2 OPEN HOUSE: first Saturday, noon, everyone came */
+static void open_house(level_t *lv) {
+  place(lv, ST_BOARD, -8.6f, 1.0f, 0.7f, 0.15f, 0);              /* rolled to the west side */
+  lv->st[ST_FORGE].present = false;                              /* no hot work with visitors */
+  move_ob(lv, OBK_LEGO, -7.0f, -7.0f, 4.6f, 1.1f, 1.0f);         /* the LEGO Day footprint */
+  add_ob(lv, (obst_t){ OBK_FOLD, -4.8f, 1.0f, 1.2f, 0.5f, 0 });
+  add_ob(lv, (obst_t){ OBK_FOLD,  6.4f, 4.0f, 1.2f, 0.5f, 0 });
+  add_prop(lv, (prop_t){ PR_VISITOR, 0, -7.6f, 0, 4.0f, 0, NULL });
+  add_prop(lv, (prop_t){ PR_VISITOR, 0, -6.9f, 0, 4.1f, 0, NULL });
+  add_prop(lv, (prop_t){ PR_VISITOR, 0, -6.3f, 0, 4.0f, 0, NULL });
+  for (int i = 0; i < lv->prop_n; i++) if (lv->props[i].kind == PR_AFRAME) lv->props[i].text = "OPEN.\nCOME IN.\nYES YOU.";
+  add_prop(lv, (prop_t){ PR_AFRAME, 0, -2.6f, 0, 7.6f, 0, "OPEN.\nCOME IN.\nYES YOU." });
+  add_prop(lv, (prop_t){ PR_PENDANT, 0, -8.4f, 2.9f, 4.4f, 0, NULL });
+  add_prop(lv, (prop_t){ PR_PENDANT, 0, -6.8f, 2.9f, 4.4f, 0, NULL });
+  drop_accent(lv, 15, 13);                                       /* the HYH L's west leg */
+  add_accent(lv, (accent_t){ T_ORANGE, 11, 12, 2, 2, 0 });       /* under folding table A */
+  add_accent(lv, (accent_t){ T_ORANGE, 30, 18, 2, 2, 0 });       /* under folding table B */
+  add_stencil(lv, (stencil_t){ "LEGO DAY. NO BABYSITTING.", -7.0f, 3.1f, F_MONO_S, false, false });
+  lv->light.sky = 0xfff8ec; lv->light.hemi = 1.6f;   /* noon; sun 3.0 clipped the tile under P0, so the sun holds at 2.3 (6.2) */
+  night_t *n = &lv->night;
+  n->clock_h0 = 12; n->clock_span = 4;
+  n->first_event = 12; n->event_gap = 14; n->event_jit = 6;
+  n->first_newbie = 4; n->newbie_gap = 8; n->newbie_jit = 4;
+  n->max_waiting = 5; n->bike_one_in = 2; n->patience = 16; n->member_life = 45;
+  n->greet_karma = 120; n->greet_vibe = 10; n->leave_vibe = -15;
+  n->dish_gap = 5; n->first_donation = 18; n->donation_gap = 18; n->donation_jit = 8;
+  n->start_dishes = 3; n->start_sawdust = 1; n->start_scrap = 1; n->start_donations = 2; n->start_boxes = 0; n->start_bath = 0;
+  n->rush_time = 0.9f;
+  n->vibe_entropy = 0.10f; n->landlord_limit = 55;
+  n->storage_gap = 30; n->book_gap = 40;
+  static const int W[EVENT_ROWS] = { 1, 0, 1, 2, 1, 5, 1, 2, 5, 1, 2, 1, 3, 0, 1, 0, 1, 3, 3, 2, 4, 1, 1, 3, 0 };
+  set_weights(lv, W);
+}
+
+/* 6.3 HABOOB NIGHT: level 0 under the dust, the back door open */
+static void haboob_night(level_t *lv) {
+  drop_props(lv, PR_AFRAME, -1);                                 /* it blew over; nobody put it out */
+  const st_place_t *la = &lv->st[ST_LASER], *lu = &lv->st[ST_LUMBER];
+  add_overlay(lv, (overlay_t){ OV_TAPE_RING, la->x - la->hw - 0.5f, fmaxf(-7.1f, la->z - la->hd - 0.3f), la->x + la->hw + 0.5f, la->z + la->hd + 0.55f });
+  add_overlay(lv, (overlay_t){ OV_TAPE_RING, lu->x - lu->hw - 0.3f, fmaxf(-7.1f, lu->z - lu->hd - 0.3f), lu->x + lu->hw + 0.3f, lu->z + lu->hd + 0.3f });
+  lv->light = (lighting_t){
+    .sky = 0xf2d2a6, .ground = 0x6a5a40, .hemi = 1.3f,
+    .sun_col = 0xf2c08a, .sun_i = 1.9f, .sun_x = -4, .sun_y = 14, .sun_z = 9, .bias = -0.0004f,
+    .p = { { 0xffb36b, 12, 8 }, { 0x8fbde6, 10, 8 }, { 0xff3b2a, 0, 6 }, { 0xffc890, 9, 9 } },
+    .pendant_e = 2.5f, .tube_e = 2.2f, .laser_idle = 0,
+    .grout = 0x8e887c, .wash_col = 0xc9a46a, .wash_a = 48,
+    .hud_tint = 0.4f, .tint_col = 0xff7a1a, .open_e = 1,
+  };
+  night_t *n = &lv->night;
+  n->first_event = 20; n->event_gap = 15; n->event_jit = 6; n->first_event_forced = 4;
+  n->first_newbie = 10; n->newbie_gap = 16; n->newbie_jit = 8;
+  n->patience = 24;
+  n->first_donation = 30; n->donation_gap = 30;
+  n->start_sawdust = 4; n->start_donations = 0;
+  n->cut_dust = 36;
+  n->speed_mul = 0.92f; n->door_open_at_start = true; n->gust_gap = 25; n->gust_jit = 15;
+  static const int W[EVENT_ROWS] = { 1, 0, 1, 4, 6, 1, 0, 2, 1, 2, 2, 2, 1, 1, 1, 0, 0, 2, 1, 1, 0, 3, 4, 1, 1 };
+  set_weights(lv, W);
+}
+
+/* 6.4 MOVE NIGHT: the wood shop moved again */
+static void move_night(level_t *lv) {
+  move_ob(lv, OBK_WOODBAY, 3.6f, -7.6f, 3.4f, 1.2f, 0.55f);      /* the wood tools are at the front left now */
+  move_ob(lv, OBK_LEGO, -7.0f, 3.65f, -6.5f, 1.15f, 0.6f);       /* swapped into the back slot */
+  move_ob(lv, OBK_ISLAND, 4.6f, 7.8f, -3.0f, 1.6f, 0.6f);        /* the old printing spot */
+  move_ob(lv, OBK_COUNTER, 7.8f, 4.6f, 1.0f, 1.6f, 0.5f);        /* the printing counter, in the hall */
+  place(lv, ST_PRINT1, 3.8f, 1.0f, 0.55f, 0.45f, 0);
+  place(lv, ST_PRINT2, 5.4f, 1.0f, 0.55f, 0.45f, 0);
+  place(lv, ST_COUCH, -4.4f, 6.0f, 1.6f, 0.45f, PI_1);           /* against the west window shelf, back to the glass */
+  static const float BX[3][2] = { { 1.6f, -1.2f }, { -5.6f, 0.0f }, { 8.0f, 4.4f } };
+  for (int k = 0; k < 3; k++) {
+    add_ob(lv, (obst_t){ OBK_BOXES, BX[k][0], BX[k][1], 0.5f, 0.5f, 0 });
+    add_overlay(lv, (overlay_t){ OV_TAPE_RING, BX[k][0] - 0.65f, BX[k][1] - 0.65f, BX[k][0] + 0.65f, BX[k][1] + 0.65f });
+  }
+  sign_t *wt = find_sign(lv, SG_TILE, "WOOD TOOLS");
+  if (wt) *wt = (sign_t){ SG_LEAN, "WOOD TOOLS", -6.3f, 0.3f, 4.05f, 0.2f, 0.9f, 0.45f };   /* nobody rehung it */
+  sign_t *pt = find_sign(lv, SG_TILE, "3D PRINTER");
+  if (pt) { pt->x = 4.6f; pt->z = 0.55f; }                       /* moves with the counter */
+  add_sign(lv, (sign_t){ SG_OLD, "WOOD SHOP (OLD)", 3.6f, 2.05f, -6.98f, 0, 0.9f, 0.45f });
+  accent_t *a;
+  if ((a = find_accent(lv, 32, 8))) { a->c = 27; a->r = 14; }    /* printers: stand here */
+  add_accent(lv, (accent_t){ T_GHOST, 32, 8, 3, 2, 0 });         /* where the old red block was */
+  if ((a = find_accent(lv, 23, 0))) *a = (accent_t){ T_ORANGE, 4, 15, 7, 5, 1 };   /* the ring follows the bay */
+  if ((a = find_accent(lv, 30, 6))) { a->c = 25; a->r = 12; a->cw = 6; }           /* the mat follows the counter */
+  add_stencil(lv, (stencil_t){ "WOOD SHOP (AGAIN)", -7.6f, 1.5f, F_H3, false, false });
+  add_stencil(lv, (stencil_t){ "THE TABLE WAS HERE", 4.6f, 3.0f, F_H3, false, false });
+  add_stencil(lv, (stencil_t){ "THE COUCH WAS HERE", -7.6f, -4.3f, F_MONO_S, false, false });
+  night_t *n = &lv->night;
+  n->len = 200;
+  n->event_gap = 16;
+  n->first_newbie = 12; n->newbie_gap = 18; n->newbie_jit = 8;
+  n->patience = 18;
+  n->dish_gap = 7; n->first_donation = 30; n->donation_gap = 30;
+  n->start_dishes = 2; n->start_scrap = 2; n->start_boxes = 6; n->start_bath = 40;
+  n->vibe_start = 60; n->vibe_entropy = 0.14f; n->landlord_limit = 60;
+  n->storage_gap = 25; n->box_gap = 40;
+  static const int W[EVENT_ROWS] = { 1, 1, 1, 2, 2, 3, 4, 4, 3, 2, 2, 1, 1, 2, 3, 2, 4, 2, 1, 3, 0, 2, 1, 1, 1 };
+  set_weights(lv, W);
+}
+
+/* 6.5 LATE NIGHT: after ten, card access only */
+static void late_night(level_t *lv) {
+  drop_ob(lv, OBK_LEGO);                                         /* the LEGO table is folded */
+  drop_ob(lv, OBK_HOST);                                         /* the host went home */
+  drop_props(lv, PR_PLANT, 0.5f);                                /* the dead plant and the hat went with the desk */
+  drop_props(lv, PR_HAT, -1);
+  drop_props(lv, PR_AFRAME, -1);                                 /* it came in at close */
+  const st_place_t *co = &lv->st[ST_COUCH];
+  add_prop(lv, (prop_t){ PR_SLEEPER, 0, co->x, 0.55f, co->z, co->ry, NULL });
+  lv->light = (lighting_t){
+    .sky = 0x8fa0c0, .ground = 0x2a2420, .hemi = 0.45f,
+    .sun_col = 0xb8c8ff, .sun_i = 0.7f, .sun_x = 2, .sun_y = 14, .sun_z = 20, .bias = -0.0003f,
+    .p = { { 0xffc07a, 16, 7 }, { 0x8fbde6, 12, 7 }, { 0xff3b2a, 2.0f, 6 }, { 0xffd09a, 18, 9 } },
+    .pendant_e = 5.0f, .tube_e = 0.2f, .laser_idle = 2.0f,
+    .grout = 0x9c968a, .wash_col = 0, .wash_a = 0,
+    .hud_tint = 0, .tint_col = 0, .open_e = 0.2f,
+  };
+  night_t *n = &lv->night;
+  n->len = 150; n->clock_h0 = 22; n->clock_span = 4;
+  n->first_event = 18; n->event_gap = 22; n->event_jit = 8;
+  n->first_newbie = 8; n->newbie_gap = 20; n->newbie_jit = 10; n->newbie_until = 20;
+  n->max_waiting = 2; n->bike_one_in = 0; n->member_life = 60;
+  n->dish_gap = 9; n->first_donation = 0; n->donation_gap = 0; n->donation_jit = 0;
+  n->start_dishes = 4; n->start_sawdust = 1; n->start_donations = 0; n->start_bath = 60;
+  n->rush_time = 0.6f;
+  n->vibe_start = 65; n->vibe_entropy = 0.09f; n->vibe_heal = 0.25f; n->landlord_limit = 40;
+  n->storage_gap = 60; n->book_gap = 60;
+  n->fridge_locked = true; n->solo_bots[0] = BOT_FOUNDER; n->solo_bots[1] = BOT_BUILDER;
+  static const int W[EVENT_ROWS] = { 2, 2, 1, 1, 1, 0, 0, 3, 0, 3, 5, 4, 1, 3, 1, 1, 2, 3, 0, 2, 0, 2, 2, 2, 2 };
+  set_weights(lv, W);
+}
+
+static const struct { const char *name, *blurb; void (*apply)(level_t *); } META[LEVEL_COUNT] = {
+  { "CLASSIC TUESDAY", "AN ORDINARY OPEN NIGHT. DOORS LOCK AT TEN.", NULL },
+  { "OPEN HOUSE",      "FIRST SATURDAY. EVERYONE CAME. SAY HI TO ALL OF THEM.", open_house },
+  { "HABOOB NIGHT",    "A WALL OF DESERT. IT IS INSIDE NOW. SWEEP.", haboob_night },
+  { "MOVE NIGHT",      "THE WOOD SHOP MOVED AGAIN. THIRD TIME. BOXES.", move_night },
+  { "LATE NIGHT",      "AFTER TEN. CARD ACCESS ONLY. THE FRIDGE IS AWAKE.", late_night },
 };
 
 void levels_init(void) {
@@ -257,6 +438,7 @@ void levels_init(void) {
     LEVELS[i] = LEVELS[0];
     LEVELS[i].name = META[i].name;
     LEVELS[i].blurb = META[i].blurb;
+    if (META[i].apply) META[i].apply(&LEVELS[i]);
   }
 }
 
