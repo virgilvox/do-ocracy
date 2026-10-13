@@ -96,7 +96,7 @@ bool settings_pinned(int row);   /* main.c: the mode decides this row */
 enum {
   IT_NONE,
   /* carried */
-  IT_PLYWOOD, IT_PROJECT, IT_SCRAP, IT_BOTTLE, IT_SPAGHETTI, IT_DONATION,
+  IT_PLYWOOD, IT_PROJECT, IT_SCRAP, IT_BOTTLE, IT_SPAGHETTI, IT_DONATION, IT_MOVEBOX,
   /* stuck to the floor, cleaned in place */
   IT_SAWDUST, IT_PUDDLE, IT_DAISY,
   IT_TYPES
@@ -124,7 +124,7 @@ typedef struct {
   float age;           /* seconds on the floor */
   int value;           /* clout for a project */
   int name;            /* index into the project / donation tables */
-  int kind;            /* project source: 0 laser 1 print 2 bench 3 sticker */
+  int kind;            /* project source: 0 laser 1 print 2 bench 3 sticker 4 sewing 5 forge */
   bool heavy;
   t3_object *obj;
 } item_t;
@@ -230,7 +230,7 @@ typedef struct {
   int nights;
   /* the level and the timers the new stations and events add */
   int level;
-  float sewing, door_dust, labels_t, purge_t, lights_t, sleeper_cool, next_storage, next_book, next_box, gust;
+  float sewing, welding, door_dust, labels_t, purge_t, lights_t, sleeper_cool, next_storage, next_book, next_box, gust;
   int tour_pending;
   bool lights_on, bike_toast, sew_toast, forge_toast, read_toast;
   /* the front end: resolved settings and group state */
@@ -384,6 +384,8 @@ extern t3_camera *world_cam;
 /* draw.c: the HUD side */
 enum { FX_SPARK, FX_KARMA, FX_CONFETTI, FX_DUST, FX_STEAM, FX_JOIN };
 void fx_burst(int kind, float x, float y, float z, uint32_t color);
+void fx_emit(float x, float y, float z, float spread, uint32_t color, int n);   /* a few drifting dust motes */
+bool game_lights_dark(void);           /* the DARK preset: the switch turns the lights on, not off */
 void draw_hud(float dt);
 bool project(float x, float y, float z, int *sx, int *sy);
 

@@ -58,12 +58,12 @@ level_t LEVELS[LEVEL_COUNT] = {
       [ST_BOARD]    = { "WHITEBOARD",             -4.4f,   1.6f,  0.7f,  0.15f, 0,    FACE_PZ,   true,  false },
       [ST_SEWING]   = { "SEWING",                -11.2f,   2.2f,  0.4f,  0.8f,  0,    FACE_PX,   true,  false },
       [ST_BATH]     = { "BATHROOM",               -6.9f,  -6.85f, 0.5f,  0.3f,  0,    FACE_PZ,   true,  false },
-      [ST_STORAGE]  = { "MEMBER STORAGE",        -11.3f,   0.0f,  0.3f,  0.6f,  0,    FACE_PX,   false, false },
-      [ST_FORGE]    = { "WELDING BAY",            11.4f,  -4.2f,  0.5f,  0.8f,  0,    FACE_NX,   false, false },
-      [ST_LIBRARY]  = { "COFFEE AND BOOKS",      -10.2f,   6.7f,  0.6f,  0.35f, 0,    FACE_NZ,   false, false },
-      [ST_BACKDOOR] = { "BACK DOOR",              11.05f, -6.95f, 0.55f, 0.2f,  0,    FACE_PZ,   false, false },
-      [ST_SWITCH]   = { "",                      -12.1f,  -1.0f,  0.15f, 0.25f, 0,    FACE_PX,   false, false },   /* never labelled */
-      [ST_BIKE]     = { "BIKE STATION",            1.15f, -6.7f,  0.45f, 0.35f, 0,    FACE_PZ,   false, false },
+      [ST_STORAGE]  = { "MEMBER STORAGE",        -11.3f,   0.0f,  0.3f,  0.6f,  0,    FACE_PX,   true,  false },
+      [ST_FORGE]    = { "WELDING BAY",            11.4f,  -4.2f,  0.5f,  0.8f,  0,    FACE_NX,   true,  false },
+      [ST_LIBRARY]  = { "COFFEE AND BOOKS",      -10.2f,   6.7f,  0.6f,  0.35f, 0,    FACE_NZ,   true,  false },
+      [ST_BACKDOOR] = { "BACK DOOR",              11.05f, -6.95f, 0.55f, 0.2f,  0,    FACE_PZ,   true,  false },
+      [ST_SWITCH]   = { "",                      -12.1f,  -1.0f,  0.15f, 0.25f, 0,    FACE_PX,   true,  false },   /* never labelled */
+      [ST_BIKE]     = { "BIKE STATION",            1.15f, -6.7f,  0.45f, 0.35f, 0,    FACE_PZ,   true,  false },
     },
 
     /* 3.2 obstacles: kind, x, z, hw, hd, ry */

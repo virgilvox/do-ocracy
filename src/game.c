@@ -52,6 +52,10 @@ static float hold_time(int kind, int ref) {
     case W_WIPE: return 1.8f;
     case W_SEW: return 1.6f;
     case W_BATH: return 3.0f;   /* the longest hold in the game */
+    case W_FORGE: return G.heat > 0 ? 1.4f : 2.8f;   /* it is already 118 in the alley */
+    case W_SHUT: return 1.2f;
+    case W_BIKE: return 1.6f;
+    case W_DRAIN: return 1.5f;
     case W_FLOOR: return I[ref].type == IT_DAISY ? 2.0f : I[ref].type == IT_PUDDLE ? 1.5f : 1.2f;
     default: return 0;
   }
@@ -93,11 +97,13 @@ const char *item_name(const item_t *it) {
     case IT_PLYWOOD: return "PLYWOOD";
     case IT_PROJECT:
       return it->kind == 0 ? LASER_PROJECTS[it->name] : it->kind == 1 ? PRINT_PROJECTS[it->name]
-           : it->kind == 2 ? BENCH_PROJECTS[it->name] : it->kind == 4 ? SEWING_PROJECTS[it->name] : STICKERS[it->name];
+           : it->kind == 2 ? BENCH_PROJECTS[it->name] : it->kind == 4 ? SEWING_PROJECTS[it->name]
+           : it->kind == 5 ? FORGE_PROJECTS[it->name] : STICKERS[it->name];
     case IT_SCRAP: return "PLYWOOD SCRAP";
     case IT_BOTTLE: return "EMPTY CLUB-MATE";
     case IT_SPAGHETTI: return "PRINT SPAGHETTI";
     case IT_DONATION: return DONATIONS[it->name].name;
+    case IT_MOVEBOX: return "MOVE BOX. LABELED MISC.";
     case IT_SAWDUST: return "SAWDUST";
     case IT_PUDDLE: return "AC LEAK";
     case IT_DAISY: return "DAISY CHAIN";
@@ -106,7 +112,7 @@ const char *item_name(const item_t *it) {
 }
 
 static bool is_mess(int t) { return t == IT_SAWDUST || t == IT_PUDDLE || t == IT_DAISY; }
-static bool is_junk(int t) { return t == IT_SCRAP || t == IT_BOTTLE || t == IT_SPAGHETTI || t == IT_DONATION; }
+static bool is_junk(int t) { return t == IT_SCRAP || t == IT_BOTTLE || t == IT_SPAGHETTI || t == IT_DONATION || t == IT_MOVEBOX; }
 
 static float weight(const item_t *it) {
   float w;
@@ -119,9 +125,11 @@ static float weight(const item_t *it) {
     case IT_PUDDLE: w = 7; break;
     case IT_DAISY: w = 24; break;
     case IT_PLYWOOD: w = 2; break;
+    case IT_MOVEBOX: w = 6; break;
     default: w = 0;
   }
   if (it->age > 25) w *= 1.5f;   /* red tagged */
+  if (G.labels_t > 0) w *= 0.5f;  /* somebody labeled everything */
   return w;
 }
 
@@ -157,6 +165,9 @@ static void give(player_t *p, int item) {
 
 static bool adding_bot;
 static bool sewing_seen;   /* the first sewing toast of the night */
+static float tour_t;       /* E_TOUR: the next of the group walks in */
+static int light_donation(void);
+static void spawn_newbie(bool tour);
 static void clear_world(void);
 static void calm_meters(void);
 
@@ -438,12 +449,16 @@ void game_player_input(int slot, uint32_t btn, float sx, float sy) {
 /* find the best thing for a player to do right now */
 typedef struct { int kind, ref; float d; const char *label; bool karma; } cand_t;
 
+static const player_t *ft_p;   /* whose targets find_target is weighing */
 static void consider(cand_t *best, int kind, int ref, float d, const char *label, bool karma) {
+  /* a bot's own goal wins a tie with a neighbour (the bike station stands beside the scrap bays) */
+  if (ft_p && ft_p->bot && kind == ft_p->goal && ref == ft_p->goal_ref) d -= 0.4f;
   if (d < best->d) { best->kind = kind; best->ref = ref; best->d = d; best->label = label; best->karma = karma; }
 }
 
 static cand_t find_target(player_t *p) {
   cand_t c = { W_NONE, -1, 1e9f, NULL, false };
+  ft_p = p;
   if (p->hold >= 0) {
     int t = I[p->hold].type;
     float d;
@@ -455,6 +470,8 @@ static cand_t find_target(player_t *p) {
       consider(&c, W_DEPOSIT, ST_SHOW, d, "SHOW IT OFF", false);
     if (S[ST_LASER].present && (d = box_dist(p->x, p->z, &S[ST_LASER])) < REACH && t == IT_PLYWOOD && S[ST_LASER].state == S_IDLE)
       consider(&c, W_LOAD, ST_LASER, d, "LOAD THE LASER", false);
+    if (S[ST_STORAGE].present && (d = box_dist(p->x, p->z, &S[ST_STORAGE])) < REACH && t == IT_MOVEBOX)
+      consider(&c, W_DEPOSIT, ST_STORAGE, d - 0.01f, "SHELVE THE BOX", true);
     return c;
   }
   for (int i = 0; i < MAX_ITEMS; i++) {
@@ -483,7 +500,10 @@ static cand_t find_target(player_t *p) {
         break;
       case ST_CUTSALOT: consider(&c, W_STICKER, i, d, "CUT A STICKER", false); break;
       case ST_BENCH: consider(&c, W_BENCH, i, d, "SOLDER SOMETHING", false); break;
-      case ST_SINK: if (s->count > 0) consider(&c, W_DISH, i, d, "WASH A DISH", true); break;
+      case ST_SINK:
+        if (s->state == S_BROKEN) consider(&c, W_DRAIN, i, d, "POUR SIX CUPS DOWN THE DRAIN", true);
+        else if (s->count > 0) consider(&c, W_DISH, i, d, "WASH A DISH", true);
+        break;
       case ST_FRIDGE:
         if (s->smell) consider(&c, W_FRIDGE, i, d, "DEAL WITH THE FRIDGE", true);
         else if (p->boost <= 0 && !L->night.fridge_locked) consider(&c, W_MATE, i, d, "GRAB A DRINK", false);
@@ -498,8 +518,21 @@ static cand_t find_target(player_t *p) {
         if (s->timer >= 50) consider(&c, W_BATH, i, d, "CLEAN THE BATHROOM", true);
         else if (s->count) consider(&c, W_LIGHT, i, d, "LIGHT OFF", true);
         break;
+      case ST_STORAGE: if (s->count >= 4) consider(&c, W_NOTICE, i, d, "POST A NOTICE", true); break;
+      case ST_FORGE: if (s->state != S_BROKEN) consider(&c, W_FORGE, i, d, "WELD SOMETHING", false); break;
+      case ST_LIBRARY: if (s->count > 0) consider(&c, W_SHELVE, i, d, "SHELVE A BOOK", true); break;
+      case ST_BACKDOOR: if (s->state == S_BROKEN) consider(&c, W_SHUT, i, d, "SHUT THE DOOR", true); break;
+      case ST_SWITCH: consider(&c, W_SWITCH, i, d, "THE LIGHTS", false); break;
+      case ST_BIKE: if (s->state == S_BROKEN) consider(&c, W_BIKE, i, d, "FIX THE FLAT", true); break;
       default: break;
     }
+  }
+  /* the sleeper on the couch: the lowest priority there is */
+  for (int i = 0; i < L->prop_n; i++) {
+    const prop_t *pr = &L->props[i];
+    if (pr->kind != PR_SLEEPER) continue;
+    float dx = pr->x - p->x, dz = pr->z - p->z, d = sqrtf(dx * dx + dz * dz);
+    if (d < 1.2f) consider(&c, W_POKE, -1, d + 5, "POKE THE SLEEPER", false);
   }
   for (int i = 0; i < MAX_NPCS; i++) {
     npc_t *n = &N[i];
@@ -516,13 +549,14 @@ static int project_value(int kind) {
     case 1: return 600 + (int)(rnd() % 200);
     case 2: return 450 + (int)(rnd() % 150);
     case 4: return 300 + (int)(rnd() % 100);
+    case 5: return 700 + (int)(rnd() % 200);
     default: return 150;
   }
 }
 
 static int make_project(player_t *p, int kind) {
   int n = kind == 0 ? COUNT(LASER_PROJECTS) : kind == 1 ? COUNT(PRINT_PROJECTS) : kind == 2 ? COUNT(BENCH_PROJECTS)
-        : kind == 4 ? COUNT(SEWING_PROJECTS) : COUNT(STICKERS);
+        : kind == 4 ? COUNT(SEWING_PROJECTS) : kind == 5 ? COUNT(FORGE_PROJECTS) : COUNT(STICKERS);
   int it = spawn_item(IT_PROJECT, p->x, p->z, kind, (int)(rnd() % n));
   if (it >= 0) { I[it].value = project_value(kind); give(p, it); }
   return it;
@@ -561,14 +595,15 @@ static void act(player_t *p, int kind, int ref) {
           ticker(msg, C_HAZARD);
         }
       } else if (ref == ST_TRASH) {
-        int v = it->type == IT_SCRAP ? 40 : it->type == IT_BOTTLE ? 30 : it->type == IT_SPAGHETTI ? 50 : it->type == IT_DONATION ? 50 : 0;
+        int v = it->type == IT_SCRAP ? 40 : it->type == IT_BOTTLE ? 30 : it->type == IT_SPAGHETTI ? 50 : it->type == IT_DONATION ? 50
+              : it->type == IT_MOVEBOX ? 20 : 0;
         if (v) karma(p, v); else { pop(p, C_INK_ERR, "WASTED PLYWOOD", 0); audio_play(SFX_DROP); }
         if (it->type == IT_SPAGHETTI && !p->bot) game_toast(TOAST_SPAGHETTI, C_INK_OK);
       } else if (ref == ST_FREEPILE) {
         int v = it->type == IT_DONATION ? 90 : it->type == IT_SCRAP ? 40 : 20;
         karma(p, v);
         if (it->type == IT_DONATION) { p->shelved++; game_toast(TOAST_SHELVED, C_ASH); }
-      }
+      } else if (ref == ST_STORAGE) karma(p, 35);
       kill_item(p->hold);
       break;
     }
@@ -669,6 +704,62 @@ static void act(player_t *p, int kind, int ref) {
       p->baths++;
       game_toast(TOAST_BATH, C_INK_OK);
       break;
+    case W_NOTICE:
+      p->notices++;
+      if (++s->dust >= 3) {
+        /* the third notice: the contents become a donation and go round through the free shelf */
+        s->count = 0; s->dust = 0;
+        karma(p, 60);
+        float ax, az;
+        approach_point(ref, 0.5f, &ax, &az);
+        spawn_item(IT_DONATION, ax, az, 0, light_donation());
+        game_toast(TOAST_NOTICE, C_INK_OK);
+      } else karma(p, 10);
+      break;
+    case W_FORGE: {
+      make_project(p, 5);
+      p->welds++;
+      s->dust += 35;
+      float ax, az;
+      approach_point(ref, 0.4f, &ax, &az);
+      if (frnd() < 0.4f) spawn_item(IT_SCRAP, ax + (frnd() - 0.5f) * 0.6f, az + (frnd() - 0.5f) * 0.8f, 0, 0);   /* slag */
+      if (G.clutter > 70) { G.fire_warn += 1.0f; game_toast(TOAST_SPARKS, C_INK_ERR); }
+      if (!G.forge_toast && G.phase == PH_NIGHT) { G.forge_toast = true; game_toast(TOAST_FORGE_LIT, C_HAZARD); }
+      audio_play(SFX_PICKUP);
+      break;
+    }
+    case W_SHELVE:
+      if (s->count > 0) s->count--;
+      karma(p, 12);
+      break;
+    case W_SHUT:
+      s->state = S_IDLE;
+      karma(p, 60);
+      game_toast(TOAST_DOOR_SHUT, C_INK_OK);
+      break;
+    case W_SWITCH:
+      if (game_lights_dark()) { G.lights_on = !G.lights_on; G.lights_t = G.lights_on ? 25 : 0; }
+      else { G.lights_on = true; G.lights_t = 6; game_toast(TOAST_LIGHTS_DAY, C_ASH); }
+      audio_play(SFX_TICK);
+      break;
+    case W_BIKE:
+      s->state = S_IDLE;
+      karma(p, 60);
+      p->flats++;
+      game_toast(TOAST_FLAT, C_INK_OK);
+      break;
+    case W_DRAIN:
+      s->state = S_IDLE;
+      karma(p, 60);
+      game_toast(TOAST_DRAIN, C_INK_OK);
+      break;
+    case W_POKE:
+      if (G.sleeper_cool <= 0) {
+        G.sleeper_cool = 30;
+        G.vibe = fminf(100, G.vibe + 1);
+        game_toast(TOAST_SLEEPER, C_ASH);
+      }
+      break;
     case W_FRIDGE:
       s->smell = false;
       karma(p, 90);
@@ -730,7 +821,13 @@ static bool goal_valid(player_t *p) {
     case W_PRINT: return p->hold < 0 && S[r].state == S_IDLE;
     case W_TAKE: return p->hold < 0 && S[r].state == S_DONE;
     case W_FIX: return p->hold < 0 && S[r].state == S_BROKEN;
-    case W_DISH: return p->hold < 0 && S[ST_SINK].count > 0;
+    case W_DISH: return p->hold < 0 && S[ST_SINK].count > 0 && S[ST_SINK].state != S_BROKEN;
+    case W_DRAIN: return p->hold < 0 && S[ST_SINK].state == S_BROKEN;
+    case W_NOTICE: return p->hold < 0 && S[ST_STORAGE].count >= 4;
+    case W_FORGE: return p->hold < 0 && S[ST_FORGE].state != S_BROKEN;
+    case W_SHELVE: return p->hold < 0 && S[ST_LIBRARY].count > 0;
+    case W_SHUT: return p->hold < 0 && S[ST_BACKDOOR].state == S_BROKEN;
+    case W_BIKE: return p->hold < 0 && S[ST_BIKE].state == S_BROKEN;
     case W_FRIDGE: return p->hold < 0 && S[ST_FRIDGE].smell;
     case W_BENCH: case W_STICKER: case W_SEW: return p->hold < 0;
     case W_ROCK: return p->hold < 0 && S[ST_VEND].state == S_BROKEN;
@@ -756,6 +853,7 @@ static void choose_goal(player_t *p) {
     if (t == IT_PROJECT) { if (S[ST_SHOW].present) { p->goal = W_DEPOSIT; p->goal_ref = ST_SHOW; } }
     else if (t == IT_DONATION) { if (S[ST_FREEPILE].present) { p->goal = W_DEPOSIT; p->goal_ref = ST_FREEPILE; } }
     else if (t == IT_PLYWOOD) { if (S[ST_LASER].present && S[ST_LASER].state == S_IDLE) { p->goal = W_LOAD; p->goal_ref = ST_LASER; } }
+    else if (t == IT_MOVEBOX && S[ST_STORAGE].present) { p->goal = W_DEPOSIT; p->goal_ref = ST_STORAGE; }
     else if (S[ST_TRASH].present) { p->goal = W_DEPOSIT; p->goal_ref = ST_TRASH; }
     return;
   }
@@ -786,7 +884,8 @@ static void choose_goal(player_t *p) {
   }
   if (S[ST_BENCH].present) WANT(W_BENCH, ST_BENCH, 0.8f, true, S[ST_BENCH].x, S[ST_BENCH].z);
   if (S[ST_CUTSALOT].present) WANT(W_STICKER, ST_CUTSALOT, 0.35f, true, S[ST_CUTSALOT].x, S[ST_CUTSALOT].z);
-  if (S[ST_SINK].present && S[ST_SINK].count >= 2) WANT(W_DISH, ST_SINK, 0.5f + S[ST_SINK].count * 0.12f, false, S[ST_SINK].x, S[ST_SINK].z);
+  if (S[ST_SINK].present && S[ST_SINK].state == S_BROKEN) WANT(W_DRAIN, ST_SINK, 1.2f, false, S[ST_SINK].x, S[ST_SINK].z);
+  else if (S[ST_SINK].present && S[ST_SINK].count >= 2) WANT(W_DISH, ST_SINK, 0.5f + S[ST_SINK].count * 0.12f, false, S[ST_SINK].x, S[ST_SINK].z);
   if (S[ST_FRIDGE].present && S[ST_FRIDGE].smell) WANT(W_FRIDGE, ST_FRIDGE, 1.5f, false, S[ST_FRIDGE].x, S[ST_FRIDGE].z);
   station_t *vd = &S[ST_VEND], *bd = &S[ST_BOARD], *sw = &S[ST_SEWING], *ba = &S[ST_BATH];
   if (vd->present && vd->state == S_BROKEN) WANT(W_ROCK, ST_VEND, 1.0f, false, vd->x, vd->z);   /* bots never buy drinks */
@@ -795,6 +894,12 @@ static void choose_goal(player_t *p) {
   if (sw->present) WANT(W_SEW, ST_SEWING, 0.5f, true, sw->x, sw->z);
   if (ba->present && ba->timer >= 50) WANT(W_BATH, ST_BATH, 1.1f, false, ba->x, ba->z);
   else if (ba->present && ba->count) WANT(W_LIGHT, ST_BATH, 0.3f, false, ba->x, ba->z);
+  station_t *so = &S[ST_STORAGE], *fo = &S[ST_FORGE], *li = &S[ST_LIBRARY], *bk = &S[ST_BACKDOOR], *bi = &S[ST_BIKE];
+  if (so->present && so->count >= 4) WANT(W_NOTICE, ST_STORAGE, 0.6f, false, so->x, so->z);
+  if (fo->present && fo->state != S_BROKEN) WANT(W_FORGE, ST_FORGE, 1.2f, true, fo->x, fo->z);
+  if (li->present && li->count > 0) WANT(W_SHELVE, ST_LIBRARY, 0.3f, false, li->x, li->z);
+  if (bk->present && bk->state == S_BROKEN) WANT(W_SHUT, ST_BACKDOOR, 1.4f, false, bk->x, bk->z);
+  if (bi->present && bi->state == S_BROKEN) WANT(W_BIKE, ST_BIKE, 0.9f, false, bi->x, bi->z);
   for (int i = 0; i < MAX_NPCS; i++)
     if (N[i].alive && N[i].state == 1) WANT(W_GREET, i, 1.6f, false, N[i].x, N[i].z);
 #undef WANT
@@ -817,6 +922,7 @@ static void goal_point(player_t *p, float *tx, float *tz) {
     default: break;
   }
   if (p->goal == W_LOITER) approach_point(r, m + 1.2f, tx, tz);   /* the board's approach point, 1.2 further out */
+  else if (!nav_clear(*tx, *tz)) approach_point(r, m, tx, tz);    /* the clamped point is in a neighbour (the back door beside the trash) */
 }
 
 static void bot_think(player_t *p, float dt) {
@@ -845,7 +951,8 @@ static void bot_think(player_t *p, float dt) {
     bool at_goal = c.kind == p->goal && (c.ref == p->goal_ref || p->goal == W_DEPOSIT || p->goal == W_LOAD);
     /* arrived, but something else is at hand (a mess by the laser, junk on the
      * approach): deal with that first, or the goal never comes within reach */
-    bool at_hand = !at_goal && dg < 0.15f && c.kind != W_NONE && c.kind != W_MATE;
+    bool at_hand = !at_goal && dg < 0.15f && c.kind != W_NONE && c.kind != W_MATE && c.kind != W_SWITCH && c.kind != W_POKE
+                   && c.kind != W_LUMBER;   /* plywood in hand is not dealing with what is at hand */
     if (p->goal == W_LOITER && dg < 0.3f && !at_hand) {
       p->stuck = 0; p->stuck_total = 0;   /* standing at the board on purpose: talking */
     } else if (at_goal || at_hand) {
@@ -907,6 +1014,7 @@ static void player_update(player_t *p, float dt) {
       else if (c.kind == W_DISH) fx_burst(FX_STEAM, S[ST_SINK].x, 1.2f, S[ST_SINK].z, 0xffffff);
       else if (c.kind == W_FLOOR && c.ref >= 0) fx_burst(FX_DUST, I[c.ref].x, 0.3f, I[c.ref].z, 0xd8b47a);
       else if (c.kind == W_BENCH) fx_burst(FX_SPARK, S[ST_BENCH].x + 0.8f, 1.0f, S[ST_BENCH].z, 0x8fbde6);
+      else if (c.kind == W_FORGE) fx_burst(FX_SPARK, S[ST_FORGE].x - 0.1f, 0.95f, S[ST_FORGE].z + 0.2f, 0xffb36b);
     }
     if (p->work >= need) { act(p, c.kind, c.ref); p->work = 0; p->work_kind = W_NONE; }
   } else {
@@ -914,6 +1022,7 @@ static void player_update(player_t *p, float dt) {
     if (pressed_a && c.kind != W_NONE) act(p, c.kind, c.ref);
   }
   if (c.kind == W_CUT && working && S[ST_LASER].state == S_LOADED) G.laser_cutting = 0.1f;
+  if (c.kind == W_FORGE && working) G.welding = 0.1f;
   if (c.kind == W_SEW && working) {
     G.sewing = 0.3f;
     if (!sewing_seen && G.phase == PH_NIGHT) { sewing_seen = true; game_toast(TOAST_SEWING, C_INK_OK); }
@@ -939,6 +1048,7 @@ static void player_update(player_t *p, float dt) {
     int t = I[p->hold].type, st = -1;
     const char *lab = NULL;
     if (t == IT_PROJECT) { st = ST_SHOW; lab = "TO THE SHOW WINDOW"; }
+    else if (t == IT_MOVEBOX && S[ST_STORAGE].present) { st = ST_STORAGE; lab = "TO STORAGE"; }
     else if (t == IT_DONATION) { st = ST_FREEPILE; lab = "TO THE FREE SHELF"; }
     else if (is_junk(t)) { st = ST_TRASH; lab = "TO THE TRASH"; }
     else if (t == IT_PLYWOOD) {
@@ -970,6 +1080,18 @@ static void player_update(player_t *p, float dt) {
     p->bob = 0;
     if (p->btn) p->idle = 0; else p->idle += dt;   /* holding a button is playing too */
   }
+  /* the library: standing still by the books for three seconds is the one free vibe */
+  if (p->read_cool > 0) p->read_cool -= dt;
+  const station_t *li = &S[ST_LIBRARY];
+  if (!p->bot && li->present && G.phase == PH_NIGHT && mag <= 0.15f && box_dist(p->x, p->z, li) < 1.6f) {
+    p->read_t += dt;
+    if (p->read_t >= 3 && p->read_cool <= 0) {
+      p->read_cool = 30;
+      G.vibe = fminf(100, G.vibe + 2);
+      fx_burst(FX_KARMA, li->x, 1.6f, li->z, C_LIVE);
+      if (!G.read_toast) { G.read_toast = true; game_toast(TOAST_READ, C_INK_OK); }
+    }
+  } else p->read_t = 0;
   collide(&p->x, &p->z, 0.38f);
   for (int k = 0; k < MAX_PLAYERS; k++) {
     if (k == slot || !P[k].active) continue;
@@ -989,10 +1111,11 @@ static void player_update(player_t *p, float dt) {
 
 /* ── newbies ─────────────────────────────────────────────────────── */
 
-static void spawn_newbie(void) {
+/* tour: one of an E_TOUR group, which ignores max_waiting up to five waiting */
+static void spawn_newbie(bool tour) {
   int waiting = 0;
   for (int i = 0; i < MAX_NPCS; i++) if (N[i].alive && N[i].state <= 1) waiting++;
-  if (waiting >= L->night.max_waiting) return;
+  if (waiting >= (tour ? 5 : L->night.max_waiting)) return;
   for (int i = 0; i < MAX_NPCS; i++) {
     if (N[i].alive) continue;
     npc_t *n = &N[i];
@@ -1005,6 +1128,20 @@ static void spawn_newbie(void) {
       if (clear_spot(n->tx, n->tz, 0.8f)) break;
     }
     n->patience = L->night.patience;
+    /* by bike: less patient, and the bike goes in the next free rack slot */
+    if (G.phase == PH_NIGHT && L->night.bike_one_in > 0 && rnd() % (uint32_t)L->night.bike_one_in == 0) {
+      for (int slot = 0; slot < 4 && n->bike < 0; slot++) {
+        bool used = false;
+        for (int k = 0; k < MAX_NPCS; k++) if (k != i && N[k].alive && N[k].bike == slot) used = true;
+        if (!used) n->bike = slot;
+      }
+      if (n->bike >= 0) {
+        n->patience = L->night.patience * 0.7f;
+        if (!G.bike_toast) { G.bike_toast = true; game_toast(TOAST_BIKE_IN, C_BONE); }
+      }
+    }
+    /* and one in four rolled in with a flat */
+    if (G.phase == PH_NIGHT && S[ST_BIKE].present && rnd() % 4 == 0) S[ST_BIKE].state = S_BROKEN;
     if (S[ST_BATH].present) { S[ST_BATH].timer = fminf(100, S[ST_BATH].timer + 8); S[ST_BATH].count = 1; }   /* every newbie checks it first */
     n->obj = world_person(0x6f685c, true, &n->body);
     game_toast("A NEWBIE WALKED IN. SOMEBODY SAY HI.", C_BONE);
@@ -1055,6 +1192,7 @@ static void npc_update(npc_t *n, float dt) {
       if (n->hold >= 0) {
         item_t *it = &I[n->hold];
         int dest = it->type == IT_DONATION && S[ST_FREEPILE].present ? ST_FREEPILE
+                 : it->type == IT_MOVEBOX && S[ST_STORAGE].present ? ST_STORAGE
                  : S[ST_TRASH].present ? ST_TRASH : S[ST_FREEPILE].present ? ST_FREEPILE : -1;
         if (dest < 0) { it->holder = -1; it->x = n->x; it->z = n->z; it->age = 0; n->hold = -1; break; }   /* nowhere to take it: set it down */
         approach_point(dest, 0.9f, &n->tx, &n->tz);
@@ -1125,8 +1263,11 @@ static const int EVENTS[] = {
  * or whose station the level lacks, weighs nothing */
 static bool event_ready(int row) {
   switch (EVENTS[row]) {
-    case E_THREAD: case E_LABELS: case E_PURGE: case E_NOSTALGIA: case E_FLAT: case E_BIN: case E_TOUR:
-    case E_DRAIN: case E_DOOR: return false;
+    case E_PURGE: return S[ST_FREEPILE].present;
+    case E_FLAT: return S[ST_BIKE].present;
+    case E_BIN: return S[ST_STORAGE].present;
+    case E_DRAIN: return S[ST_SINK].present;
+    case E_DOOR: return S[ST_BACKDOOR].present;
     case E_BATH: return S[ST_BATH].present;
     case E_VEND: return S[ST_VEND].present;
     default: return true;
@@ -1145,10 +1286,33 @@ static void spawn_donation(void) {
 /* a clear spot on the open floor; false when there is none, and the caller skips */
 static bool floor_spot(float *x, float *z) { return spot_in(&L->spot_box, 0.6f, x, z); }
 
+/* a donation one person can carry */
+static int light_donation(void) {
+  for (int t = 0; t < 20; t++) { int d = (int)(rnd() % COUNT(DONATIONS)); if (!DONATIONS[d].heavy) return d; }
+  return 0;
+}
+
+/* member storage gives up: a scrap and a donation fall out of the +x face */
+static void storage_spill(void) {
+  station_t *s = &S[ST_STORAGE];
+  for (int k = 0; k < 2; k++) {
+    float x = s->x + s->hw + 0.5f, z = s->z;
+    for (int t = 0; t < 12; t++) {
+      x = s->x + s->hw + 0.3f + frnd() * 1.2f; z = s->z + (frnd() - 0.5f) * 2.4f;
+      if (clear_spot(x, z, 0.3f)) break;
+    }
+    if (k == 0) spawn_item(IT_SCRAP, x, z, 0, 0); else spawn_item(IT_DONATION, x, z, 0, light_donation());
+  }
+  s->count = 3; s->timer = 4;
+  game_toast(TOAST_BIN, C_INK_ERR);
+  audio_play(SFX_DROP);
+}
+
 /* the events that hurt; CALM and CHAOS scale their weights by G.badmul */
 static bool bad_event(int eff) {
   return eff == E_HEAT || eff == E_HABOOB || eff == E_DAISY || eff == E_DONATION ||
-         eff == E_STRANGE || eff == E_FRIDGE || eff == E_SPAGHETTI || eff == E_LANDLORD || eff == E_BATH || eff == E_VEND;
+         eff == E_STRANGE || eff == E_FRIDGE || eff == E_SPAGHETTI || eff == E_LANDLORD || eff == E_BATH || eff == E_VEND ||
+         eff == E_THREAD || eff == E_PURGE || eff == E_NOSTALGIA || eff == E_FLAT || eff == E_BIN || eff == E_DRAIN || eff == E_DOOR;
 }
 
 static int gcd(int a, int b) { while (b) { int t = a % b; a = b; b = t; } return a; }
@@ -1206,6 +1370,7 @@ static void fire_event(void) {
         if (S[ST_LASER].dust >= 100 && S[ST_LASER].state == S_IDLE) S[ST_LASER].state = S_BROKEN;
       }
       for (int i = 0; i < 3; i++) if (floor_spot(&x, &z)) { spawn_item(IT_SAWDUST, x, z, 0, 0); fx_burst(FX_DUST, x, 0.5f, z, 0xd8b47a); }
+      if (S[ST_BACKDOOR].present) S[ST_BACKDOOR].state = S_BROKEN;   /* and the back door blows open */
       break;
     case E_TACOS:
       G.vibe = fminf(100, G.vibe + 10);
@@ -1232,6 +1397,25 @@ static void fire_event(void) {
       if (S[ST_BATH].present) { S[ST_BATH].timer = fmaxf(S[ST_BATH].timer, 70); S[ST_BATH].count = 1; }
       break;
     case E_VEND: if (S[ST_VEND].present) S[ST_VEND].state = S_BROKEN; break;
+    case E_THREAD: {
+      /* the mailing list stings less when two of you are standing together */
+      bool together = false;
+      for (int a = 0; a < MAX_PLAYERS; a++) for (int b = a + 1; b < MAX_PLAYERS; b++) {
+        if (!P[a].active || !P[b].active || P[a].bot || P[b].bot) continue;
+        float dx = P[a].x - P[b].x, dz = P[a].z - P[b].z;
+        if (dx * dx + dz * dz < 4) together = true;
+      }
+      G.vibe -= together ? 4 : 8;
+      break;
+    }
+    case E_LABELS: G.labels_t = 20; break;
+    case E_PURGE: G.purge_t = 20; break;
+    case E_NOSTALGIA: G.vibe -= 4; break;
+    case E_FLAT: if (S[ST_BIKE].present) S[ST_BIKE].state = S_BROKEN; break;
+    case E_BIN: if (S[ST_STORAGE].present) storage_spill(); break;
+    case E_TOUR: G.tour_pending = 3; tour_t = 0; break;
+    case E_DRAIN: if (S[ST_SINK].present) S[ST_SINK].state = S_BROKEN; break;
+    case E_DOOR: if (S[ST_BACKDOOR].present) S[ST_BACKDOOR].state = S_BROKEN; break;
     default: break;
   }
 }
@@ -1257,6 +1441,8 @@ void game_init(void) {
 
 void game_reset_world(void) { clear_world(); }
 
+bool game_lights_dark(void) { return L->light.sun_i < 1.0f; }   /* only the DARK preset runs the sun under 1 */
+
 void game_start_night(void) {
   const night_t *nt = &L->night;
   clear_world();
@@ -1280,6 +1466,13 @@ void game_start_night(void) {
   S[ST_BATH].timer = nt->start_bath + (nt->start_bath == 20 ? frnd() * 30 : 0);
   S[ST_BATH].count = S[ST_BATH].timer > 0;
   G.sewing = 0; sewing_seen = false;
+  G.door_dust = 0; G.labels_t = 0; G.purge_t = 0; G.lights_t = 0; G.lights_on = false; G.sleeper_cool = 0;
+  G.next_storage = nt->storage_gap * G.pace; G.next_book = nt->book_gap * G.pace; G.next_box = nt->box_gap * G.pace;
+  G.tour_pending = 0; tour_t = 0;
+  G.bike_toast = G.forge_toast = G.read_toast = false;
+  S[ST_STORAGE].count = 2;   /* the bins are never empty */
+  if (nt->door_open_at_start) S[ST_BACKDOOR].state = S_BROKEN;
+  G.gust = nt->gust_gap + frnd() * nt->gust_jit;
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &P[i];
     if (!p->active) continue;
@@ -1299,6 +1492,10 @@ void game_start_night(void) {
     else if (floor_spot(&x, &z)) spawn_item(IT_SCRAP, x, z, 0, 0);
   }
   for (int i = 0; i < nt->start_donations; i++) spawn_donation();
+  for (int i = 0; i < nt->start_boxes; i++) {   /* MOVE NIGHT: the wood shop's boxes, in the middle of the room */
+    box_t b = { -6, -3, 6, 4 };
+    if (spot_in(&b, 0.6f, &x, &z)) spawn_item(IT_MOVEBOX, x, z, 0, 0);
+  }
   /* CHAOS: the second printer is already down and has already made spaghetti */
   if (!G.attract && G.mode == MODE_CHAOS && S[ST_PRINT2].present) {
     S[ST_PRINT2].state = S_BROKEN;
@@ -1311,6 +1508,7 @@ void game_start_night(void) {
 
 static void calm_meters(void) {
   G.fire_warn = 0; G.heat = 0; G.landlord = 0; G.clutter = 0; G.vibe = L->night.vibe_start; G.laser_cutting = 0;
+  G.lights_on = false; G.lights_t = 0; G.labels_t = 0; G.purge_t = 0; G.tour_pending = 0;
   G.ticker_t = 0;
 }
 
@@ -1365,6 +1563,7 @@ void game_update(float dt) {
   }
   if (G.laser_cutting > 0) G.laser_cutting -= dt;
   if (G.sewing > 0) G.sewing -= dt;
+  if (G.welding > 0) G.welding -= dt;
   if (S[ST_SHOW].timer > 0) S[ST_SHOW].timer -= dt;
 
   for (int i = 0; i < MAX_ITEMS; i++) if (I[i].alive && I[i].holder < 0) I[i].age += dt;
@@ -1372,7 +1571,7 @@ void game_update(float dt) {
   if (G.phase == PH_TITLE) {
     /* attract: the odd newbie wanders in and leaves */
     G.next_newbie -= dt;
-    if (G.next_newbie <= 0) { spawn_newbie(); G.next_newbie = 9; }
+    if (G.next_newbie <= 0) { spawn_newbie(false); G.next_newbie = 9; }
     return;
   }
   if (!night) return;
@@ -1384,14 +1583,73 @@ void game_update(float dt) {
   if (G.heat > 0) G.heat -= dt / rush;
   if ((G.next_event -= dt) <= 0) { fire_event(); G.next_event = (nt->event_gap + frnd() * nt->event_jit) * G.pace; }
   if ((G.next_newbie -= dt) <= 0) {
-    if (nt->newbie_until <= 0 || G.t < nt->newbie_until) spawn_newbie();
+    if (nt->newbie_until <= 0 || G.t < nt->newbie_until) spawn_newbie(false);
     G.next_newbie = (nt->newbie_gap + frnd() * nt->newbie_jit) * G.pace;
   }
   if ((G.next_dish -= dt) <= 0) { if (S[ST_SINK].present && S[ST_SINK].count < 10) S[ST_SINK].count++; G.next_dish = nt->dish_gap * G.pace; }
   if ((G.next_donation -= dt) <= 0) { spawn_donation(); G.next_donation = (nt->donation_gap + frnd() * nt->donation_jit) * G.pace; }
+  station_t *so = &S[ST_STORAGE], *li = &S[ST_LIBRARY];
+  if (so->present && nt->storage_gap > 0 && (G.next_storage -= dt) <= 0) {   /* one more box; a full shelf gives up */
+    if (so->count >= 6) storage_spill(); else so->count++;
+    G.next_storage = nt->storage_gap * G.pace;
+  }
+  if (li->present && nt->book_gap > 0 && (G.next_book -= dt) <= 0) { if (li->count < 4) li->count++; G.next_book = nt->book_gap * G.pace; }
+  if (nt->box_gap > 0 && (G.next_box -= dt) <= 0) {
+    box_t b = { -6, -3, 6, 4 };
+    float x, z;
+    if (spot_in(&b, 0.6f, &x, &z)) spawn_item(IT_MOVEBOX, x, z, 0, 0);
+    G.next_box = nt->box_gap * G.pace;
+  }
 
   dt /= rush;
   if (S[ST_BATH].present) S[ST_BATH].timer = fminf(100, S[ST_BATH].timer + 0.4f * dt);   /* dirtiness, on real time */
+  if (S[ST_STORAGE].timer > 0) S[ST_STORAGE].timer -= dt;   /* the tilted box lies there a while */
+  /* the forge cools on real time; too hot is a forced break */
+  station_t *fo = &S[ST_FORGE];
+  if (fo->present) {
+    fo->dust = fmaxf(0, fo->dust - 4 * dt);
+    if (fo->dust >= 100) fo->state = S_BROKEN;
+    else if (fo->state == S_BROKEN && fo->dust < 60) fo->state = S_IDLE;
+  }
+  /* the back door: open, the desert comes in */
+  station_t *bk = &S[ST_BACKDOOR];
+  if (bk->present && bk->state == S_BROKEN) {
+    if ((bk->dust += dt) >= 6) {
+      bk->dust = 0;
+      int near = 0;
+      for (int i = 0; i < MAX_ITEMS; i++) {
+        if (!I[i].alive || I[i].type != IT_SAWDUST || I[i].holder >= 0) continue;
+        float dx = I[i].x - bk->x, dz = I[i].z - bk->z;
+        if (dx * dx + dz * dz < 2.6f * 2.6f) near++;
+      }
+      box_t b = { bk->x - 2.6f, bk->z + 0.7f, bk->x - 0.6f, bk->z + 2.0f };
+      float x, z;
+      if (near < 4 && spot_in(&b, 0.3f, &x, &z)) { spawn_item(IT_SAWDUST, x, z, 0, 0); fx_burst(FX_DUST, x, 0.4f, z, 0xd8b47a); }
+    }
+    if ((G.door_dust += dt) >= 10) {
+      G.door_dust -= 10;
+      station_t *la = &S[ST_LASER];
+      if (la->present) { la->dust = fminf(100, la->dust + 3); if (la->dust >= 100 && la->state == S_IDLE) la->state = S_BROKEN; }
+    }
+    fx_emit(bk->x - 0.1f, 1.0f, bk->z + 0.3f, 0.8f, 0xd8b47a, 2);
+  } else if (bk->present && nt->gust_gap > 0 && (G.gust -= dt) <= 0) {   /* HABOOB NIGHT: it will not stay shut */
+    bk->state = S_BROKEN;
+    G.gust = nt->gust_gap + frnd() * nt->gust_jit;
+    game_toast(TOAST_DOOR_GUST, C_INK_ERR);
+  }
+  if (G.labels_t > 0) G.labels_t -= dt;
+  if (G.purge_t > 0 && (G.purge_t -= dt) <= 0) {   /* the purge lands: whatever is by the free shelf is gone */
+    for (int i = 0; i < MAX_ITEMS; i++)
+      if (I[i].alive && I[i].holder < 0 && box_dist(I[i].x, I[i].z, &S[ST_FREEPILE]) < 1.5f) kill_item(i);
+    G.vibe -= 3;
+    game_toast(TOAST_PURGED, C_INK_ERR);
+  }
+  if (G.lights_on && (G.lights_t -= dt) <= 0) {
+    G.lights_on = false;
+    if (game_lights_dark()) game_toast(TOAST_LIGHTS_OFF, C_ASH);
+  }
+  if (G.sleeper_cool > 0) G.sleeper_cool -= dt;
+  if (G.tour_pending > 0 && (tour_t -= dt) <= 0) { spawn_newbie(true); G.tour_pending--; tour_t = 1.2f; }
   if (G.landlord > 0) {
     G.landlord -= dt;
     if (G.landlord <= 0) {
@@ -1410,6 +1668,10 @@ void game_update(float dt) {
   if (S[ST_VEND].present && S[ST_VEND].state == S_BROKEN) c += 3;
   if (S[ST_BOARD].present) c += S[ST_BOARD].count * 1.5f;
   if (S[ST_BATH].present) c += S[ST_BATH].timer / 12;
+  if (S[ST_SINK].present && S[ST_SINK].state == S_BROKEN) c += 8;
+  if (S[ST_STORAGE].present) c += S[ST_STORAGE].count * 1.0f;
+  if (S[ST_LIBRARY].present) c += S[ST_LIBRARY].count * 1.5f;
+  if (S[ST_BIKE].present && S[ST_BIKE].state == S_BROKEN) c += 3;
   G.clutter += (c - G.clutter) * fminf(1, dt * 3);
   if (G.clutter > 60) G.vibe -= dt * (G.clutter - 60) / 40.f * 2.0f;
   else if (G.clutter < 25) G.vibe = fminf(100, G.vibe + dt * nt->vibe_heal);

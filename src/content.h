@@ -152,6 +152,20 @@ static const char *const TOAST_WIPED     = "WHITEBOARD WIPED. %d COMMITTEES DISS
 static const char *const TOAST_CORNER    = "YOU WIPED THE CORNER. IT SAID DO NOT ERASE. DATED 2019.";
 static const char *const TOAST_SEWING    = "SOMEBODY IS SEWING. THE ROOM LOOKS FRIENDLIER.";  /* first sewing of the night */
 static const char *const TOAST_BATH      = "BATHROOM DONE. +KARMA. NO WITNESSES.";        /* the longest hold, finished */
+static const char *const TOAST_BIN       = "A BIN GAVE UP. IT WAS LABELED MISC.";          /* member storage spills */
+static const char *const TOAST_NOTICE    = "THIRD AND FINAL NOTICE. FIRST AND SECOND WERE IMPLIED.";   /* the third notice clears storage */
+static const char *const TOAST_FORGE_LIT = "THE FORGE IS LIT. IT IS NOW 140 IN THE ALLEY.";   /* first weld of the night */
+static const char *const TOAST_SPARKS    = "SPARKS NEAR THE FREE PILE. THE MARSHAL FELT THAT.";   /* a weld with clutter over 70 */
+static const char *const TOAST_READ      = "40 BINDERS OF DATASHEETS. ONE HAS BEEN READ.";   /* first quiet read of the night */
+static const char *const TOAST_FLAT      = "FIXED A FLAT. IT IS 118. THEY RODE HERE.";       /* the bike station */
+static const char *const TOAST_BIKE_IN   = "A NEWBIE LOCKED UP. IT IS 118. BE FAST.";        /* first newbie by bike */
+static const char *const TOAST_DOOR_SHUT = "DOOR SHUT. THE DESERT WAITS.";
+static const char *const TOAST_DOOR_GUST = "THE DOOR AGAIN. THE DESERT IS PATIENT.";         /* HABOOB NIGHT gusts */
+static const char *const TOAST_LIGHTS_DAY = "LIGHTS. SO PEOPLE KNOW WE ARE OPEN.";
+static const char *const TOAST_LIGHTS_OFF = "SOMEONE TURNED THE LIGHTS OFF TO SAVE POWER.";   /* DARK: the switch times out */
+static const char *const TOAST_SLEEPER   = "NO. TWO NIGHTS A WEEK MAX. THEY ROLLED OVER.";
+static const char *const TOAST_PURGED    = "SOMEONE WANTED THAT. TOO LATE.";                 /* the free pile purge lands */
+static const char *const TOAST_DRAIN     = "SIX CUPS. THE SEWER GAS RETREATS.";
 
 /* The event table, 25 rows in the order of docs/design/FINAL-space.md 5.15;
  * the night script's weight column and game.c's effect list index into it.

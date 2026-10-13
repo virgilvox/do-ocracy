@@ -95,6 +95,13 @@ static void fx_add(int kind, float x, float y, float z, float vx, float vy, floa
   *f = (fx_t){ x, y, z, vx, vy, vz, life, life, size, c, kind };
 }
 
+/* a steady trickle: n slow dust motes drifting in from a point (the open back door) */
+void fx_emit(float x, float y, float z, float spread, uint32_t color, int n) {
+  for (int i = 0; i < n; i++)
+    fx_add(FX_DUST, x + (frnd() - 0.5f) * spread, y + (frnd() - 0.5f) * 1.4f, z + frnd() * 0.3f,
+           -0.3f - frnd() * 0.6f, 0.1f + frnd() * 0.3f, 0.6f + frnd() * 0.9f, 1.0f + frnd() * 0.6f, 4 + frnd() * 4, color);
+}
+
 void fx_burst(int kind, float x, float y, float z, uint32_t color) {
   static const uint32_t CONF[6] = { C_HAZARD, C_LIVE, C_VIOLET, C_INFO, C_RUST, C_BONE };
   switch (kind) {
@@ -170,6 +177,9 @@ static float label_height(int i) {
     case ST_BOARD: return 2.6f;   /* above the board, so the lines show under the name */
     case ST_LASER: return 1.9f;
     case ST_FORGE: return 1.6f;
+    case ST_LIBRARY: return 1.9f;
+    case ST_BACKDOOR: return 2.7f;
+    case ST_BIKE: return 2.4f;   /* above the stand, so the flat shows under the name */
     default: return 1.3f;
   }
 }
@@ -202,7 +212,8 @@ static void station_labels(void) {
       case ST_LUMBER: case ST_BENCH: case ST_CUTSALOT: case ST_SHOW: pay = 1; break;
       case ST_SINK:
         pay = 2;
-        if (s->count) { snprintf(st, sizeof st, "%d DISHES. HOLD TO WASH", s->count); c = s->count > 5 ? C_INK_ERR : C_ASH; alarm = s->count > 5; }
+        if (s->state == S_BROKEN) { snprintf(st, sizeof st, "DRAIN DRIED OUT"); c = C_INK_ERR; alarm = true; }
+        else if (s->count) { snprintf(st, sizeof st, "%d DISHES. HOLD TO WASH", s->count); c = s->count > 5 ? C_INK_ERR : C_ASH; alarm = s->count > 5; }
         break;
       case ST_FRIDGE:
         if (s->smell) { snprintf(st, sizeof st, "SMELLS. HOLD TO CLEAN"); c = C_INK_ERR; alarm = true; pay = 2; }
@@ -223,6 +234,31 @@ static void station_labels(void) {
         pay = 2;
         if (s->timer >= 50) { snprintf(st, sizeof st, "NEEDS A HERO"); c = s->timer >= 70 ? C_INK_ERR : C_ASH; alarm = s->timer >= 70; }
         else if (s->count) snprintf(st, sizeof st, "LIGHT ON");
+        break;
+      case ST_STORAGE:
+        pay = 2;
+        if (s->count >= 4) { snprintf(st, sizeof st, "BIN %d/6", s->count); c = s->count >= 6 ? C_INK_ERR : C_ASH; alarm = s->count >= 6; }
+        break;
+      case ST_FORGE:
+        pay = 1;
+        if (s->state == S_BROKEN) { snprintf(st, sizeof st, "TOO HOT"); c = C_INK_ERR; alarm = true; }
+        else if (s->dust >= 50) { snprintf(st, sizeof st, "HOT %d", (int)s->dust); c = C_HAZARD; }
+        break;
+      case ST_LIBRARY: {
+        pay = 2;
+        bool quiet = false;
+        for (int k = 0; k < MAX_PLAYERS; k++) if (P[k].active && P[k].read_t >= 3) quiet = true;
+        if (quiet) snprintf(st, sizeof st, "QUIET");
+        else if (s->count > 0) snprintf(st, sizeof st, "%d BOOKS OUT", s->count);
+        break;
+      }
+      case ST_BACKDOOR:
+        pay = 2;
+        if (s->state == S_BROKEN) { snprintf(st, sizeof st, "BLOWN OPEN"); c = C_INK_ERR; alarm = true; }
+        break;
+      case ST_BIKE:
+        pay = 2;
+        if (s->state == S_BROKEN) { snprintf(st, sizeof st, "FLAT"); c = C_INK_ERR; alarm = true; }
         break;
       case ST_TRASH: case ST_FREEPILE: pay = 2; break;
     }
@@ -285,6 +321,7 @@ static void floor_tags(void) {
     if (red) label_av(sx, sy - 20, "RED TAG", C_BONE, C_FAULT, F_MONO_S);
     else if (it->type == IT_PROJECT) label_av(sx, sy - 20, item_name(it), C_HAZARD, C_CHAR, F_MONO_S);
     else if (it->type == IT_DONATION) label_av(sx, sy - 20, item_name(it), C_BONE, C_CHAR, F_MONO_S);
+    else if (it->type == IT_MOVEBOX) label_av(sx, sy - 20, S[ST_STORAGE].present ? "TO STORAGE" : "TO THE TRASH", C_BONE, C_CHAR, F_MONO_S);
   }
 }
 
@@ -1456,7 +1493,7 @@ static const end_variant_t *end_variant(void) {
 static void results_awards(const int *order, int n, const char **aname, char award[][72]) {
   for (int i = 0; i < MAX_PLAYERS; i++) { aname[i] = NULL; award[i][0] = 0; }
   int top_k = -1, top_c = -1, top_t = -1, top_g = -1, top_m = -1, low = -1;
-  int top_s = -1, top_f = -1, top_u = -1, top_d = -1, top_b = -1;
+  int top_s = -1, top_f = -1, top_u = -1, top_d = -1, top_b = -1, top_l = -1;
   for (int j = 0; j < n; j++) {
     int i = order[j];
     if (top_k < 0 || P[i].karma > P[top_k].karma) top_k = i;
@@ -1469,6 +1506,7 @@ static void results_awards(const int *order, int n, const char **aname, char awa
     if (top_u < 0 || P[i].unplugged > P[top_u].unplugged) top_u = i;
     if (top_d < 0 || P[i].dishes > P[top_d].dishes) top_d = i;
     if (top_b < 0 || P[i].baths > P[top_b].baths) top_b = i;
+    if (top_l < 0 || P[i].flats > P[top_l].flats) top_l = i;
     if (low < 0 || P[i].tasks + P[i].clout / 500 < P[low].tasks + P[low].clout / 500) low = i;
   }
   #define AW(k, cond, nm, ...) if ((k) >= 0 && !aname[k] && (cond)) { aname[k] = nm; snprintf(award[k], 72, __VA_ARGS__); }
@@ -1477,6 +1515,7 @@ static void results_awards(const int *order, int n, const char **aname, char awa
   AW(top_t, P[top_t].proposals >= 3, "TALKER", AWARD_TALKER, P[top_t].proposals)
   AW(top_g, P[top_g].greeted >= 2, "GREETER", AWARD_GREETER, P[top_g].greeted)
   AW(top_b, P[top_b].baths >= 1, "NO WITNESSES", AWARD_WITNESS, P[top_b].baths)
+  AW(top_l, P[top_l].flats >= 2, "GREASE MONKEY", AWARD_GREASE, P[top_l].flats)
   AW(top_m, P[top_m].mates >= 3, "CLUB-MATE SOMMELIER", AWARD_MATE, P[top_m].mates)
   AW(top_s, P[top_s].shelved >= 2, "FREE PILE CURATOR", AWARD_CURATOR, P[top_s].shelved)
   AW(top_f, P[top_f].fixes >= 1, "PRINTER WHISPERER", AWARD_WHISPER, P[top_f].fixes)

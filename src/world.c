@@ -38,6 +38,13 @@ static t3_texture *tex[64]; static int tex_n;
 static t3_material *owned[96]; static int owned_n;
 static t3_object *fans[8]; static int fan_n;
 static t3_mesh *board_line[8], *board_corner[2];   /* the whiteboard's marker lines and its DO NOT ERASE corner */
+static t3_mesh *storage_box[6], *storage_misc, *storage_tilt;   /* bankers boxes by count, the MISC label, the spilled one */
+static t3_mesh *lib_book[4];                        /* books out, on the floor in front of the shelf */
+static t3_object *door_hinge, *door_leaf;           /* the back door swings on its east jamb */
+static t3_mesh *switch_toggle;
+static t3_object *bike_hung;                        /* the flat, on the bike station's stand */
+static t3_object *rack_bike[4]; static t3_material *rack_frame[4]; static int rack_n;   /* bikes in the rack, by npc.bike slot */
+static t3_object *visitor[8]; static int visitor_n;
 
 static void *keep(void *o) {
   if (o && built_n < (int)(sizeof built / sizeof built[0])) built[built_n++] = o;
@@ -488,12 +495,6 @@ static void build_room(const level_t *lv) {
     t3_material *grime = keep_mat(mat(C_GRIME, 1.0f, 0));
     BOX(&SC->base, grime, tr->hw * 2, 2.4f, 0.25f, tr->x, 1.2f, -6.87f);
   }
-  /* the green back door, flat in the wall until work item 12 hangs the hinged station model */
-  const st_place_t *bd = &lv->st[ST_BACKDOOR];
-  BOX(&SC->base, m_door, bd->hw * 2 - 0.1f, 2.4f, 0.08f, bd->x, 1.2f, bd->z);
-  BOX(&SC->base, m_steel_hi, 0.08f, 2.5f, 0.1f, bd->x - bd->hw, 1.25f, bd->z);
-  BOX(&SC->base, m_steel_hi, 0.08f, 2.5f, 0.1f, bd->x + bd->hw, 1.25f, bd->z);
-  BOX(&SC->base, m_char, 0.06f, 0.06f, 0.2f, bd->x - bd->hw + 0.25f, 1.05f, bd->z + 0.06f);
   /* the laser's exhaust duct, up to the roof */
   const st_place_t *la = &lv->st[ST_LASER];
   CYL(&SC->base, m_steel_hi, 0.26f, 1.9f, la->x - 2.2f, 2.45f, -6.5f);
@@ -511,6 +512,28 @@ static t3_object *station_group(station_t *s) {
 }
 
 static void grey_chair(t3_object *g, float x, float z, float ry);
+
+/* a bicycle along local x: two wheels 0.9 apart, a frame, a saddle and bars */
+static t3_object *bike_model(t3_object *parent, float x, float y, float z, float ry, t3_material *frame) {
+  t3_object *b = t3_group_new();
+  t3_object_set_position(b, x, y, z);
+  t3_object_set_rotation(b, 0, ry, 0);
+  t3_object_add(parent, b);
+  t3_release(b);
+  for (int k = -1; k <= 1; k += 2) {
+    rot(noshadow(part(b, g_disc, m_char, 0.3f, 0.05f, 0.3f, k * 0.45f, 0.3f, 0)), 1.5707963f, 0, 0);
+    rot(noshadow(part(b, g_disc, m_steel_hi, 0.06f, 0.035f, 0.06f, k * 0.45f, 0.3f, 0)), 1.5707963f, 0, 0);
+  }
+  BOX(b, frame, 0.6f, 0.05f, 0.05f, 0.02f, 0.62f, 0);                                     /* top tube */
+  rot(BOX(b, frame, 0.6f, 0.05f, 0.05f, 0.05f, 0.45f, 0), 0, 0, 0.55f);                   /* down tube */
+  BOX(b, frame, 0.05f, 0.45f, 0.05f, -0.2f, 0.5f, 0);                                     /* seat tube */
+  rot(BOX(b, frame, 0.45f, 0.05f, 0.05f, -0.3f, 0.32f, 0), 0, 0, -0.1f);                 /* chain stay */
+  BOX(b, m_char, 0.2f, 0.04f, 0.08f, -0.22f, 0.75f, 0);                                   /* saddle */
+  BOX(b, frame, 0.05f, 0.4f, 0.05f, 0.38f, 0.5f, 0);                                      /* fork */
+  BOX(b, m_char, 0.03f, 0.03f, 0.42f, 0.38f, 0.74f, 0);                                   /* bars */
+  return b;
+}
+
 static t3_texture *plaque(int w, int h, uint32_t bg, uint32_t fg, int font, const char *text);
 
 /* Silhouettes first (FINAL-space.md section 10): one dominant colour, one
@@ -777,11 +800,81 @@ static void build_stations(void) {
   BOX(g, m_steel_hi, 0.12f, 0.04f, 0.06f, 0.32f, 1.0f, -0.07f);                          /* handle */
   s->light = noshadow(BOX(g, keep_mat(emis(0xfff6e0, 0)), 0.6f, 0.05f, 0.05f, 0, 2.32f, -0.08f));
 
-  /* the rest of the new stations are parked until their models land (work items 10 to 12) */
-  for (int i = ST_STORAGE; i < ST_COUNT; i++) {
-    s = &S[i]; g = station_group(s);
-    BOX(g, m_grey, s->hw * 2, 0.8f, s->hd * 2, 0, 0.4f, 0);
+  /* member storage on the west wall: lockers, bankers boxes on top by count, the one that gave up */
+  s = &S[ST_STORAGE]; g = station_group(s);
+  BOX(g, m_steel, 0.6f, 1.9f, 1.2f, 0, 0.95f, 0);
+  noshadow(BOX(g, m_char, 0.01f, 1.85f, 0.02f, 0.305f, 0.95f, 0));                       /* door seams, a 2 x 3 grid */
+  for (int r = 1; r < 3; r++) noshadow(BOX(g, m_char, 0.01f, 0.02f, 1.18f, 0.305f, 0.03f + r * 0.633f, 0));
+  for (int k = 0; k < 6; k++) noshadow(BOX(g, m_amber, 0.06f, 0.06f, 0.06f, 0.33f, 0.4f + (k / 2) * 0.633f, k & 1 ? 0.1f : -0.1f));   /* padlocks */
+  BOX(g, m_grey, 0.6f, 0.03f, 1.2f, 0, 1.915f, 0);                                       /* the shelf on top */
+  for (int k = 0; k < 6; k++) {
+    storage_box[k] = BOX(g, m_cardboard, 0.4f, 0.3f, 0.3f, 0, 2.08f + (k / 3) * 0.31f, -0.4f + (k % 3) * 0.4f);
+    storage_box[k]->base.visible = false;
   }
+  storage_misc = noshadow(BOX(g, m_bone, 0.01f, 0.06f, 0.15f, 0.205f, 2.39f, 0.4f));    /* MISC, on the top box */
+  storage_misc->base.visible = false;
+  storage_tilt = rot(BOX(g, m_cardboard, 0.4f, 0.3f, 0.3f, 0.6f, 0.17f, 0.3f), 0, 0.3f, 0.4f);
+  storage_tilt->base.visible = false;
+
+  /* the welding bay on the east wall: table, two cylinders chained up, the blue curtain, the MIG on its cart */
+  s = &S[ST_FORGE]; g = station_group(s);
+  BOX(g, m_steel_hi, 0.7f, 0.08f, 1.0f, -0.15f, 0.85f, 0.15f);
+  for (int k = 0; k < 4; k++) BOX(g, m_char, 0.05f, 0.81f, 0.05f, k & 1 ? 0.15f : -0.45f, 0.405f, k & 2 ? 0.6f : -0.3f);
+  for (int k = 0; k < 2; k++) CYL(g, m_steel_hi, 0.14f, 1.3f, 0.34f, 0.65f, -0.68f + k * 0.3f);
+  BOX(g, m_rust, 0.03f, 0.03f, 0.6f, 0.44f, 1.05f, -0.53f);                              /* the chain */
+  BOX(g, m_blue, 0.05f, 1.4f, 1.2f, 0.46f, 1.0f, 0.15f);                                 /* curtain, wall side */
+  BOX(g, m_char, 0.35f, 0.04f, 0.4f, -0.2f, 0.3f, -0.6f);                                /* the cart */
+  BOX(g, m_red, 0.3f, 0.5f, 0.4f, -0.2f, 0.57f, -0.6f);                                  /* the MIG */
+  part(g, g_sphere, m_char, 0.14f, 0.14f, 0.14f, -0.25f, 0.99f, 0.45f);                  /* helmet */
+  s->light = noshadow(part(g, g_sphere, keep_mat(emis(0xffb36b, 0)), 0.08f, 0.08f, 0.08f, -0.15f, 0.95f, 0.1f));
+
+  /* coffee and books: an open black shelf (no top board, so the top row reads from above), books out on the floor */
+  s = &S[ST_LIBRARY]; g = station_group(s);
+  BOX(g, m_char, 1.2f, 1.6f, 0.03f, 0, 0.8f, 0.16f);
+  for (int k = -1; k <= 1; k += 2) BOX(g, m_char, 0.03f, 1.6f, 0.35f, k * 0.585f, 0.8f, 0);
+  {
+    t3_material *sp[5] = { m_rust, m_info, m_bone, m_violet, m_green };
+    for (int r = 0; r < 3; r++) BOX(g, m_char, 1.2f, 0.03f, 0.35f, 0, 0.05f + r * 0.5f, 0);
+    for (int k = 0; k < 20; k++) {
+      int r = k / 7, c = k % 7;
+      noshadow(BOX(g, sp[k % 5], 0.03f + (k % 3) * 0.02f, 0.22f + (k % 2) * 0.04f, 0.18f, -0.45f + c * 0.15f, 0.19f + r * 0.5f, -0.02f));
+    }
+  }
+  for (int k = 0; k < 4; k++) {
+    lib_book[k] = rot(noshadow(BOX(g, m_bone, 0.22f, 0.04f, 0.3f, -0.4f + k * 0.27f, 0.02f + (k & 1) * 0.04f, -0.6f)), 0, (k - 1.5f) * 0.4f, 0);
+    lib_book[k]->base.visible = false;
+  }
+  noshadow(BOX(g, m_bone, 0.01f, 0.3f, 0.2f, -0.605f, 1.2f, 0));                         /* the clipboard */
+
+  /* the green TURN OFF GAS door: a hinge group at the east jamb, the leaf swings into the room */
+  s = &S[ST_BACKDOOR]; g = station_group(s);
+  BOX(g, m_steel_hi, 0.08f, 2.5f, 0.1f, -s->hw, 1.25f, 0);
+  BOX(g, m_steel_hi, 0.08f, 2.5f, 0.1f, s->hw, 1.25f, 0);
+  BOX(g, m_steel_hi, s->hw * 2 + 0.08f, 0.08f, 0.1f, 0, 2.5f, 0);
+  s->light = noshadow(BOX(g, keep_mat(emis(0xffd9a8, 0)), 0.9f, 2.2f, 0.01f, 0.05f, 1.1f, -0.035f));   /* the alley light */
+  sign_on(g, plaque(64, 32, C_BONE, C_FAULT, F_MONO_S, "EXIT"), 0.3f, 0.15f, 0.05f, 2.68f, 0.06f, 0);
+  door_hinge = t3_group_new();
+  t3_object_set_position(door_hinge, s->hw, 0, 0);
+  t3_object_add(g, door_hinge); t3_release(door_hinge);
+  door_leaf = t3_group_new();
+  t3_object_set_position(door_leaf, -0.5f, 0, 0);
+  t3_object_add(door_hinge, door_leaf); t3_release(door_leaf);
+  BOX(door_leaf, m_door, 1.0f, 2.4f, 0.08f, 0, 1.2f, 0);
+  BOX(door_leaf, m_char, 0.06f, 0.06f, 0.2f, -0.38f, 1.05f, 0.06f);                     /* handle */
+
+  /* the light switch on the west wall: a plate and a toggle */
+  s = &S[ST_SWITCH]; g = station_group(s);
+  noshadow(BOX(g, m_bone, 0.03f, 0.18f, 0.12f, 0.13f, 1.3f, 0));
+  switch_toggle = noshadow(BOX(g, m_char, 0.03f, 0.06f, 0.03f, 0.155f, 1.3f, 0));
+
+  /* the bike station: a black filing cabinet, a stand, and a bike on it while one has a flat */
+  s = &S[ST_BIKE]; g = station_group(s);
+  BOX(g, m_char, 0.9f, 1.1f, 0.6f, 0, 0.55f, -0.05f);
+  for (int k = 0; k < 3; k++) noshadow(BOX(g, m_steel_hi, 0.2f, 0.03f, 0.01f, 0, 0.3f + k * 0.33f, 0.255f));   /* drawer pulls */
+  BOX(g, m_steel_hi, 0.04f, 1.2f, 0.04f, 0.35f, 0.6f, 0.4f);
+  BOX(g, m_steel_hi, 0.12f, 0.08f, 0.12f, 0.35f, 1.22f, 0.4f);
+  bike_hung = bike_model(g, -0.05f, 0.62f, 0.42f, 0, m_rust);
+  bike_hung->visible = false;
 }
 
 /* ── furniture: blocks the way and does nothing ────────────────────
@@ -1035,12 +1128,18 @@ static void build_props(const level_t *lv) {
         rot(BOX(g, m_bone, 0.6f, 0.9f, 0.03f, 0, 0.45f, -0.13f), 0.3f, 0, 0);
         BOX(g, m_char, 0.62f, 0.04f, 0.04f, 0, 0.9f, 0);
         break;
-      case PR_BIKERACK:                                      /* four inverted U tubes at 0.6 pitch */
+      case PR_BIKERACK:                                      /* four inverted U tubes at 0.6 pitch, a bike per slot */
         for (int k = 0; k < 4; k++) {
           float x = k * 0.6f;
           BOX(g, m_steel_hi, 0.03f, 0.8f, 0.03f, x, 0.4f, -0.25f);
           BOX(g, m_steel_hi, 0.03f, 0.8f, 0.03f, x, 0.4f, 0.25f);
           BOX(g, m_steel_hi, 0.03f, 0.03f, 0.5f, x, 0.8f, 0);
+          if (rack_n < 4) {
+            rack_frame[rack_n] = keep_mat(mat(0x8b8578, 0.6f, 0.2f));
+            rack_bike[rack_n] = bike_model(g, x + 0.1f, 0, 0, 1.5707963f, rack_frame[rack_n]);
+            rack_bike[rack_n]->visible = false;
+            rack_n++;
+          }
         }
         break;
       case PR_LEGO_CRATES: {                                 /* yellow crates, two and one, bricks on top */
@@ -1073,7 +1172,21 @@ static void build_props(const level_t *lv) {
         CYL(g, m_steel_hi, 0.02f, 3.4f - p->y, 0, (3.4f - p->y) / 2, 0);
         CYL(g, m_screen, 0.04f, 0.04f, 0, 0, 0.16f);
         break;
-      default: break;                                        /* PR_SLEEPER and PR_VISITOR: work item 12 */
+      case PR_SLEEPER: {                                     /* LATE NIGHT: somebody on the couch, along its length */
+        t3_object *o = keep(world_person(0x8b8578, true, NULL));
+        t3_object_set_position(o, p->x, p->y, p->z);
+        t3_object_set_rotation(o, 0, p->ry + 1.5707963f, 1.5707963f);
+        break;
+      }
+      case PR_VISITOR:                                       /* OPEN HOUSE: a grey visitor at the LEGO table, bobbing */
+        if (visitor_n < 8) {
+          t3_object *o = keep(world_person(0x8b8578, true, NULL));
+          t3_object_set_position(o, p->x, 0, p->z);
+          t3_object_set_rotation(o, 0, p->ry, 0);
+          visitor[visitor_n++] = o;
+        }
+        break;
+      default: break;
     }
   }
 }
@@ -1174,9 +1287,10 @@ static void build_signs(const level_t *lv) {
       default: break;
     }
     if (!tx) continue;
-    if (sg->kind == SG_GAS) {
-      /* panel local coordinates on the back door; the door model is work item 12, so until
-       * then the plaque hangs on the wall where the panel will be */
+    if (sg->kind == SG_GAS && door_leaf) {
+      /* panel local: a child of the door leaf, so it swings with the door */
+      sign_on(door_leaf, tx, sg->w, sg->h, sg->x, sg->y, sg->z, sg->ry);
+    } else if (sg->kind == SG_GAS) {
       const st_place_t *bd = &lv->st[ST_BACKDOOR];
       sign(tx, sg->w, sg->h, bd->x + sg->x, sg->y, bd->z + sg->z, sg->ry);
     } else {
@@ -1231,7 +1345,10 @@ void world_set_level(const level_t *nl) {
   owned_n = 0;
   for (int i = 0; i < tex_n; i++) t3_release(tex[i]);
   tex_n = 0;
-  fan_n = 0;
+  fan_n = 0; rack_n = 0; visitor_n = 0;
+  door_hinge = door_leaf = bike_hung = NULL; switch_toggle = storage_misc = storage_tilt = NULL;
+  for (int k = 0; k < 6; k++) storage_box[k] = NULL;
+  for (int k = 0; k < 4; k++) lib_book[k] = NULL;
   for (int i = 0; i < ST_COUNT; i++) { S[i].obj = NULL; S[i].light = S[i].beam = S[i].growth = NULL; }
   build_all(L);
 }
@@ -1329,6 +1446,7 @@ t3_object *world_item_obj(int type, int kind) {
       else if (kind == 1) part(g, g_knot, m_amber, 0.2f, 0.2f, 0.2f, 0, 0.28f, 0);
       else if (kind == 2) { BOX(g, m_pcb, 0.5f, 0.05f, 0.4f, 0, 0.1f, 0); part(g, g_sphere, m_led, 0.08f, 0.08f, 0.08f, 0, 0.18f, 0); }
       else if (kind == 4) { BOX(g, m_violet, 0.5f, 0.12f, 0.4f, 0, 0.07f, 0); BOX(g, m_bone, 0.06f, 0.13f, 0.42f, 0.1f, 0.075f, 0); }
+      else if (kind == 5) part(g, g_knot, m_rust, 0.22f, 0.22f, 0.22f, 0, 0.3f, 0);   /* every forge project is a hook */
       else BOX(g, m_amber, 0.4f, 0.03f, 0.4f, 0, 0.1f, 0);
       break;
     case IT_SCRAP: {
@@ -1345,6 +1463,10 @@ t3_object *world_item_obj(int type, int kind) {
     case IT_DONATION:
       if (kind) { BOX(g, m_crt, 0.8f, 0.7f, 0.8f, 0, 0.35f, 0); BOX(g, m_screen, 0.6f, 0.5f, 0.05f, 0, 0.38f, 0.41f); }
       else BOX(g, m_cardboard, 0.6f, 0.45f, 0.5f, 0, 0.225f, 0);
+      break;
+    case IT_MOVEBOX:
+      BOX(g, m_cardboard, 0.6f, 0.5f, 0.5f, 0, 0.25f, 0);
+      noshadow(BOX(g, m_bone, 0.2f, 0.1f, 0.01f, 0, 0.3f, 0.255f));
       break;
     case IT_SAWDUST:
       part(g, g_disc, m_sawdust, 0.6f, 0.03f, 0.5f, 0, 0.02f, 0);
@@ -1498,6 +1620,42 @@ void world_sync(float dt) {
   glow(S[ST_SEWING].light, 0xfff0d0, G.sewing > 0 ? 2.0f : 0.4f);
   /* bathroom: the tube over the door is the light somebody left on */
   glow(S[ST_BATH].light, 0xfff6e0, S[ST_BATH].count ? 2.5f : 0);
+  /* member storage: one box per count on the shelf, the spilled one on the floor for a while */
+  station_t *so = &S[ST_STORAGE];
+  for (int k = 0; k < 6; k++) if (storage_box[k]) storage_box[k]->base.visible = k < so->count;
+  if (storage_misc) storage_misc->base.visible = so->count >= 6;
+  if (storage_tilt) storage_tilt->base.visible = so->timer > 0;
+  /* the forge lamp: heat, and a flicker while somebody welds */
+  station_t *fo = &S[ST_FORGE];
+  glow(fo->light, 0xffb36b, fo->dust / 25 + (G.welding > 0 ? 2 + sinf(t * 31) : 0));
+  /* books out */
+  for (int k = 0; k < 4; k++) if (lib_book[k]) lib_book[k]->base.visible = k < S[ST_LIBRARY].count;
+  /* the back door swings into the room while it is blown open; the alley light comes with it */
+  static float door_ang;
+  station_t *bk = &S[ST_BACKDOOR];
+  float want = bk->state == S_BROKEN ? 1.2f : 0, step = 6 * dt;
+  door_ang += fmaxf(-step, fminf(step, want - door_ang));
+  if (door_hinge) t3_object_set_rotation(door_hinge, 0, door_ang, 0);
+  if (door_ang > 0.02f) glow(bk->light, 0xffd9a8, 1.5f * door_ang / 1.2f); else glow(bk->light, C_GRIME, 0);
+  /* the switch flips with the lights */
+  if (switch_toggle) t3_object_set_rotation(switch_toggle, 0, 0, G.lights_on ? -0.5f : 0.5f);
+  bool dark = game_lights_dark();
+  sun->intensity = G.lights_on ? (dark ? 1.8f : 1.2f) : L->light.sun_i;
+  m_bulb->emissive_intensity = G.lights_on && dark ? 2.5f : L->light.pendant_e;
+  /* the flat on the stand */
+  if (bike_hung) bike_hung->visible = S[ST_BIKE].state == S_BROKEN;
+  /* the rack: a bike per newbie who rode in; greeted, it takes their colour */
+  for (int k = 0; k < rack_n; k++) {
+    const npc_t *rider = NULL;
+    for (int i = 0; i < MAX_NPCS; i++) if (N[i].alive && N[i].bike == k) rider = &N[i];
+    rack_bike[k]->visible = rider != NULL;
+    if (rider) rack_frame[k]->color = rider->state == 2 && rider->body ? rider->body->materials[0]->color : t3_color_hex(0x8b8578);
+  }
+  /* visitors bob where they stand */
+  for (int k = 0; k < visitor_n; k++) {
+    float x = visitor[k]->position.x, z = visitor[k]->position.z;
+    t3_object_set_position(visitor[k], x, fabsf(sinf(t * 2.2f + k * 1.7f)) * 0.06f, z);
+  }
   /* show window pedestal: the last thing shown, spinning */
   station_t *sh = &S[ST_SHOW];
   sh->growth->base.visible = sh->timer > 0;
