@@ -35,7 +35,7 @@ level_t LEVELS[LEVEL_COUNT] = {
     .doormat_box = { -0.7f, 5.9f, 0.7f, 6.5f },
     .streak_box  = { 9.3f, 2.8f, 9.9f, 7.0f },
     /* puddle_box follows the sink: set in levels_init */
-    .lobby_x = -1.2f, .lobby_z = 5.0f, .start_x = -1.5f, .start_z = 4.3f,
+    .lobby_x = -1.2f, .lobby_z = 4.1f, .start_x = -1.5f, .start_z = 4.3f,
 
     /* 3.1 stations: label, x, z, hw, hd, ry, face, present, always_label */
     .st = {

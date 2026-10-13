@@ -335,6 +335,17 @@ class Band {
         for (int i = 0; i < 4; ++i) Push(i * 55, I_BELL, Mtof(62 + rng_sfx_.Next() * 12), 0.28f);
         break;
       case SFX_SLURP: Push(0, I_SNARE, 300, 0.2f); Push(80, I_PLUCK, Mtof(60), 0.5f); Push(160, I_PLUCK, Mtof(67), 0.5f); break;
+      /* the front end */
+      case SFX_MENU_MOVE: Push(0, I_HAT, 900, 0.25f); Push(0, I_PLUCK, Mtof(84), 0.35f); break;
+      case SFX_MENU_OK: Push(0, I_PLUCK, Mtof(72), 0.6f); Push(50, I_PLUCK, Mtof(79), 0.6f); Push(100, I_BELL, Mtof(88), 0.5f); break;
+      case SFX_MENU_BACK: Push(0, I_PLUCK, Mtof(67), 0.5f); Push(60, I_PLUCK, Mtof(62), 0.5f); break;
+      case SFX_MENU_DENY: Push(0, I_BUZZ, Mtof(45), 0.5f); Push(90, I_BUZZ_OFF, 0, 0); break;
+      case SFX_CARD: Push(0, I_OHAT, 330, 0.3f); Push(0, I_PLUCK, Mtof(76), 0.4f); break;
+      case SFX_READY: Push(0, I_BELL, Mtof(79), 0.5f); Push(80, I_BELL, Mtof(86), 0.5f); break;
+      case SFX_COUNTDOWN: Push(0, I_PLUCK, Mtof(69), 0.7f); Push(0, I_BELL, Mtof(81), 0.4f); break;
+      case SFX_GO:
+        Push(0, I_BELL, Mtof(76), 0.6f); Push(70, I_BELL, Mtof(80), 0.6f); Push(140, I_BELL, Mtof(83), 0.6f);
+        Push(210, I_BELL, Mtof(88), 0.7f); Push(210, I_OHAT, 330, 0.5f); break;
     }
   }
 

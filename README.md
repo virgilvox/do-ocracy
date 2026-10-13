@@ -47,7 +47,7 @@ The floor and walls are textures painted at startup with the HUD's own drawing r
 | Keyboard under RetroArch | arrows | Z | X | A | Enter |
 | Keyboard in the desktop wasmcart player | arrows or WASD | X or Space | Z | | Enter |
 
-Press your "do it" button to clock in. The night starts when someone presses Start or Enter, or by itself 25 seconds after the first person joins. Drop in any time.
+Press A on the title to take the menu, then PLAY. Anyone else who presses A waits at the door and is seated in the lobby. In the lobby, press Start (Enter, or right Shift on the arrows half) to say READY; when every player is ready a 3 second countdown starts the night, and otherwise it starts by itself 25 seconds after the last join. Hold B for 1.5 seconds to go home (alone, 1 second takes you back to the menu). Drop in any time during the night.
 
 The two keyboard players read raw keys, which the browser player delivers. Under RetroArch (Batocera) and in the desktop `npx wasmcart` player, the keyboard arrives as pad 1 with that host's own bindings instead, shown in the last two rows. Someone who clocks in on a pad or the keyboard and then does nothing for 75 seconds goes home, so the cabinet can fall back to its demo.
 
@@ -62,7 +62,7 @@ The two keyboard players read raw keys, which the browser player delivers. Under
 - The clock counts down the time left in the night, with a progress bar marked in hours. Messages get their own strip under the top row, above the room, so they never cover the floor.
 - Labels in the room never stack: each one moves to the nearest free spot.
 - Every event banner says what it means ("HABOOB! Dust on the floor and in the laser. Sweep it.").
-- The lobby and the attract screen show a how-to board and a button chart.
+- The title shows the room behind a light scrim with nine strings at most; after 20 idle seconds the attract screen runs the floor loop tips. The lobby shows one seat card per player along the bottom, with the bots a solo night will add.
 
 ## Phones
 

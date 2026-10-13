@@ -73,6 +73,14 @@ typedef struct {
   bool kb_seen;
   int pending_count;    /* mirrored from the seats each frame for draw.c */
   int pending_seat[SEAT_COUNT];   /* seat ids in order, for the AT THE DOOR chips */
+  /* mirrored by main.c each frame for draw.c */
+  char seat_name[SEAT_COUNT][14];
+  int cur_dir;          /* the last cursor move, -1 up, 1 down, for the overshoot */
+  float sel_t;          /* the selected row flashes bone */
+  float status_t; char status[48];   /* lobby status line (WAITING ON ...), not a deny */
+  float lobby_t, ready_t;            /* lobby auto start (25 down) and the ready countdown (0 up to 3) */
+  float hold_b[MAX_PLAYERS];         /* by slot: the hold-B leave ring, 0..1 */
+  bool tape_held;       /* the lobby tape holds still */
 } menu_t;
 extern menu_t M;       /* defined in game.c beside G, driven by main.c, drawn by draw.c */
 
@@ -353,6 +361,7 @@ void game_apply_settings(void);         /* SET and the mode into G.night_len, pa
 void game_quit_to_title(void);
 int  game_mode_bots(int *a, int *b);    /* which bots the current mode adds for one human; returns count */
 const char *item_name(const item_t *it);
+const char *game_bot_name(int arch);
 
 /* world.c: the 3D side */
 void world_init(t3_scene *scene);

@@ -7,32 +7,51 @@
 
 #define COUNT(a) ((int)(sizeof(a) / sizeof((a)[0])))
 
+/* the title, one at a time, every 6 s (humor brief 2.1) */
 static const char *const TAGLINES[] = {
   "WHOEVER DOES IT, DECIDES.",
   "NOBODY DOES THE DISHES.",
   "COMMUNICATION IS NOT PERMISSION.",
-  "LEAVE IT BETTER.",
-  "BE EXCELLENT TO EACH OTHER.",
-  "HACKING THE PLANET SINCE 2009.",
-  "OPEN SOURCE. OPEN DOORS.",
-  "A JANITORIAL CO-OP WITH CLASSROOMS ATTACHED.",
+  "A JANITORIAL CO-OP WITH CLASSROOMS.",
+  "THE LASER IS BOOKED. THE MOP IS FREE.",
+  "MEET ON TUESDAY. END OF DISCUSSION.",
+  "RENT IS DUE. VIBES ARE NOT A CURRENCY.",
+  "THE FREE PILE ONLY GROWS.",
+  "STEP 5: RETURN TO STEP 1.",
+  "IF THE LAB CLOSES, YOUR CLOUT IS VOID.",
+  "SOMEBODY HAS TO. IT IS YOU.",
+  "LINUX NIGHT IS CANCELED. PLAY ANYWAY.",
+  "BE EXCELLENT. ALSO SWEEP.",
+  "THE WIKI SAYS TO UPDATE THE WIKI.",
 };
 
-/* The attract loop. The floor-cleaning loop is real; it has never exited. */
+/* The attract loop. The floor-cleaning loop is real; it has never exited.
+ * Indexed by time, so the five numbered lines stay first and in order. */
 static const char *const ATTRACT_TIPS[] = {
   "1. WE SHOULD CLEAN THE FLOORS.",
   "2. TESTING ENSUES.",
   "3. GET A QUOTE. IT IS $4,000.",
   "4. WHY DON'T WE CLEAN THEM OURSELVES?",
   "5. RETURN TO STEP 1.",
+  "THE FLOOR LOOP HAS NEVER EXITED.",
   "CLOUT IS FOR YOU. KARMA IS FOR THE SPACE.",
-  "IF THE SPACE CLOSES, ALL CLOUT IS VOID.",
-  "THE LASER IS ALWAYS BOOKED. SIR CUTSALOT IS ALWAYS FREE.",
-  "A NEWBIE DECIDES IN FIVE MINUTES WHETHER TO COME BACK.",
-  "THE FIRE MARSHAL HAS OPINIONS ABOUT POWER STRIPS.",
-  "THERE ARE NO EMPLOYEES. ONLY YOU.",
-  "MEET ON TUESDAY. END OF DISCUSSION.",
+  "THE LASER IS BOOKED. SIR CUTSALOT IS FREE.",
+  "A NEWBIE DECIDES IN FIVE MINUTES. SAY HI.",
+  "THE FIRE MARSHAL COUNTS POWER STRIPS.",
+  "NO STAFF. NO FRONT DESK. ONLY YOU.",
+  "1,716 HOURS OF CLEANING. NOT ON THE POSTER.",
+  "COORDINATE BEFORE. DO NOT APOLOGIZE AFTER.",
 };
+
+/* the main menu (FINAL-frontend.md 6.3) */
+static const char *const MENU_ROWS[] = { "PLAY", "MODES", "SETTINGS", "HOW TO PLAY", "CREDITS" };
+static const char *const DENY_LINES[] = {
+  "ONE AT A TIME. THIS IS A DO-OCRACY.",
+  "JOIN IN THE LOBBY. P1 IS PICKING.",
+  "PINNED BY THE MODE. PICK CUSTOM.",
+};
+static const char *const NEEDS_LINE = "NEEDS 2 PLAYERS OR BOTS";
+static const char *const UNBUILT_LINE = "UNDER CONSTRUCTION. LIKE THE WOOD SHOP.";
 
 /* X button. The Talker move. It feels productive. It is not. */
 static const char *const PROPOSALS[] = {
@@ -187,6 +206,33 @@ static const char *const HELP_NAMES[] = { "OFF", "FIRST NIGHT", "ALWAYS" };
 static const char *const ONOFF[] = { "OFF", "ON" };
 static const char *const ROOM_NAMES[] = { "108 W MAIN" };   /* until the ROOM row reads LEVELS[].name */
 /* how many end lines each ending has (END_NONE, END_SURVIVED, END_FIRE, END_BURNOUT) */
+
+/* the modes (FINAL-frontend.md 8.6); the colour and glyph tokens come from hud.h */
+typedef struct { const char *short_name, *name1, *name2, *players, *blurb, *rule[3]; int rule_glyph[3]; uint32_t color; int glyph; } mode_def_t;
+static const mode_def_t MODES[MODE_COUNT] = {
+ { "SOLO",   "SOLO",   "WITH BOTS",    "1 PLAYER", "YOU PLUS TWO MEMBERS. ONE OF THEM MOSTLY TALKS.",
+   { "BOTS: BUILDER, TALKER", "CLOCK: %s", "SCORE: CLOUT AND KARMA" }, { GL_BOT, GL_HEART, GL_CLOUT }, C_HAZARD, GL_BOT },
+ { "CO-OP",  "CO-OP",  "VS THE CLOCK", "1 TO 8",   "ONE TEAM. ONE KARMA TOTAL. KEEP THE LAB OPEN.",
+   { "SCORE: TEAM KARMA", "GRADE: S A B C", "LOSE: EVERYONE LOSES" }, { GL_KARMA, GL_CHECK, GL_MARSHAL }, C_LIVE, GL_KARMA },
+ { "VERSUS", "VERSUS", "CLOUT RACE",   "2 TO 8",   "MOST CLOUT WINS. IF THE LAB CLOSES, NOBODY WINS.",
+   { "SCORE: CLOUT", "LOST NIGHT: CLOUT VOID", "ALONE? BOTS ARE RIVALS" }, { GL_CLOUT, GL_MARSHAL, GL_BOT }, C_HAZARD, GL_CLOUT },
+ { "CHAOS",  "CHAOS",  "NIGHT",        "1 TO 8",   "THINGS BREAK FASTER. A PRINTER IS ALREADY DOWN.",
+   { "EVENTS: MORE AND WORSE", "PRINTERS: JAM MORE", "CLOCK: SHORT 2:00" }, { GL_MARSHAL, GL_BOT, GL_HEART }, C_RUST, GL_MARSHAL },
+ { "CUSTOM", "CUSTOM", "YOUR RULES",   "1 TO 8",   "YOUR SETTINGS. YOUR PROBLEM.",
+   { "OPENS SETTINGS", "THEN THE LOBBY", "SCORE: RANKED" }, { GL_KEYS, GL_CHECK, GL_CLOUT }, C_VIOLET, GL_KEYS },
+};
+static const char *const MODE_LOBBY_NAMES[MODE_COUNT] = { "SOLO WITH BOTS", "CO-OP VS THE CLOCK", "VERSUS CLOUT RACE", "CHAOS NIGHT", "CUSTOM YOUR RULES" };
+
+/* rules flash captions as colour runs; NULL terminated (the first one also
+ * captions the HOW TO PLAY preview on the main menu) */
+static const run_t FLASH_CAPS[5][5] = {
+  { { "HOLD A. ", C_HAZARD }, { "DO THE THING.", C_BONE }, { NULL, 0 } },
+  { { "FOLLOW THE ", C_BONE }, { "ARROW.", C_HAZARD }, { NULL, 0 } },
+  { { "AMBER", C_HAZARD }, { " IS YOURS. ", C_BONE }, { "TEAL", C_LIVE }, { " IS OURS.", C_BONE }, { NULL, 0 } },
+  { { "CLUTTER", C_RUST }, { " 100: ", C_BONE }, { "FIRE MARSHAL.", C_FAULT }, { NULL, 0 } },
+  { { "SAY HI", C_LIVE }, { " OR THEY LEAVE.", C_BONE }, { NULL, 0 } },
+};
+
 static const int END_VARIANT_COUNT[4] = { 0, 2, 3, 3 };
 
 #endif

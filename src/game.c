@@ -1,8 +1,8 @@
 /* The night itself: players, stations, messes, newbies and events. */
 #include "game.h"
+#include "hud.h"
 #include "content.h"
 #include "audio.h"
-#include "hud.h"
 #include "net.h"
 #include <math.h>
 #include <string.h>
@@ -391,13 +391,13 @@ int game_add_player(bool phone, int pad, const char *pid, const char *name) {
   if (name && *name) snprintf(p->name, sizeof p->name, "%s", name);
   else snprintf(p->name, sizeof p->name, "PLAYER %d", slot + 1);
   p->color = PCOL[slot];
-  p->x = L->lobby_x + (slot % 4) * 0.8f; p->z = L->lobby_z - (slot / 4) * 0.9f;
+  p->x = L->lobby_x + (slot % 4) * 1.1f; p->z = L->lobby_z + (slot / 4) * 0.9f;   /* rows at z 4.1 and 5.0: the first four stand above the seat cards */
   p->face = 3.14159f;
   p->obj = world_person(p->color, false, &p->body);
   char msg[64];
   if (!adding_bot) {
-    snprintf(msg, sizeof msg, "%s JOINED%s", p->name, phone ? " FROM A PHONE" : "");
-    game_toast(msg, p->color);
+    /* a pad or keyboard join is announced by its lobby card; phones keep the toast */
+    if (phone) { snprintf(msg, sizeof msg, "%s JOINED FROM A PHONE", p->name); game_toast(msg, p->color); }
     audio_play(SFX_JOIN);
     fx_burst(FX_JOIN, p->x, 1.0f, p->z, p->color);
   }
@@ -643,6 +643,7 @@ static void act(player_t *p, int kind, int ref) {
 /* ── bots: the archetypes, playing as members ────────────────────── */
 
 static const char *const BOT_NAMES[] = { "", "BUILDER", "TALKER", "FOUNDER" };
+const char *game_bot_name(int arch) { return arch > 0 && arch < COUNT(BOT_NAMES) ? BOT_NAMES[arch] : ""; }
 
 int human_count(void) { int n = 0; for (int i = 0; i < MAX_PLAYERS; i++) n += P[i].active && !P[i].bot; return n; }
 

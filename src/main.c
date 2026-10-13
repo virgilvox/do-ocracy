@@ -6,6 +6,7 @@
 #include "hud.h"
 #include "net.h"
 #include "audio.h"
+#include "content.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -46,8 +47,10 @@ typedef struct {
   bool pending;        /* pressed A on a menu, or a phone said J while the front end was up */
   bool denied;         /* the deny joke has fired for this seat */
   float hold_b;        /* lobby: seconds B has been held */
+  float seen;          /* phones on the front end: seconds since the relay last heard it */
 } seat_t;
 static seat_t seats[SEAT_COUNT];
+static void front_end_reset(void);
 static float status_clock;
 
 /* the save region: settings and records, persisted by the host after the frame */
@@ -210,7 +213,7 @@ void wc_init(void) {
   }
   snprintf(seats[SEAT_KB(0)].name, sizeof seats[0].name, "WASD");
   snprintf(seats[SEAT_KB(1)].name, sizeof seats[0].name, "ARROWS");
-  M.owner = -1; M.screen = SCR_TITLE; M.prev_screen = SCR_TITLE;
+  front_end_reset();
   net_init(G.relay, G.room);
   audio_music(1);
   WC_LOG("do-ocracy: clocked in");
@@ -278,6 +281,7 @@ static void seats_poll(float dt) {
       if (KEY(0x37)) b |= IN_A;                         /* . */
       if (KEY(0x36)) b |= IN_B;                         /* , */
       if (KEY(0x38)) b |= IN_X;                         /* / */
+      if (KEY(0xe5)) b |= IN_START;                     /* right shift */
       x = (float)(KEY(0x4f) - KEY(0x50));               /* right, left */
       y = (float)(KEY(0x51) - KEY(0x52));               /* down, up */
     }
@@ -289,23 +293,218 @@ static void seats_poll(float dt) {
 }
 
 static bool any_pressed;   /* someone pressed A or START this frame */
-static bool start_pressed;
+static float empty_t;
+static int last_n;
+
+static bool front_end_up(void) { return G.phase == PH_TITLE || G.attract; }
+static void welcome(int slot);
+
+/* ── the front end: owner, pending seats, the menus (FINAL-frontend.md 3, 6) ── */
+
+static void menu_goto(int screen) {
+  M.prev_screen = M.screen; M.screen = screen; M.t = 0; M.idle = 0;
+  if (screen == SCR_MAIN && (M.prev_screen == SCR_TITLE || M.prev_screen == SCR_ATTRACT)) { M.row = 0; M.cur_y = 200; }
+}
+
+static void front_end_reset(void) {
+  bool kb = M.kb_seen;
+  memset(&M, 0, sizeof M);
+  M.kb_seen = kb; M.owner = -1; M.screen = M.prev_screen = SCR_TITLE; M.cur_y = 200; M.lobby_t = 25;
+}
+
+/* a new group walked up: everything about the last one is forgotten */
+static void new_group(void) {
+  G.phase = PH_TITLE; G.t = 0; G.attract = false; G.paused = false;
+  G.flash_seen = false; G.group_nights = 0; G.wipe_t = 0;
+  for (int i = 0; i < SEAT_COUNT; i++) {
+    seat_t *s = &seats[i];
+    s->pending = s->denied = false; s->hold_b = 0;
+    if (i >= SEAT_PHONE(0) && s->slot < 0) s->present = false;
+  }
+  front_end_reset();
+  audio_music(1);
+}
+
+static void seat_owner(int id) { M.owner = id; seats[id].pending = false; M.idle = 0; }
+
+static int lowest_pending(void) {
+  for (int i = 0; i < SEAT_COUNT; i++) if (seats[i].present && seats[i].pending && seats[i].slot < 0) return i;
+  return -1;
+}
+
+/* a second seat pressed A on a menu: one joke per seat, then it waits at the door */
+static void deny_seat(int id) {
+  seat_t *s = &seats[id];
+  if (s->pending || s->slot >= 0) return;
+  if (!s->denied) {
+    M.deny_t = 2;
+    snprintf(M.deny, sizeof M.deny, "%s", DENY_LINES[M.screen == SCR_MAIN ? 0 : 1]);
+    audio_play(SFX_MENU_DENY);
+    s->denied = true;
+  }
+  s->pending = true;
+}
+
+/* seat one seat as a player in the lobby */
+static int seat_in(int id) {
+  seat_t *s = &seats[id];
+  bool phone = id >= SEAT_PHONE(0);
+  int slot = game_add_player(phone, id < SEAT_PADS ? id : -1, phone ? s->pid : NULL, s->name);
+  if (slot < 0) return -1;
+  s->slot = slot; s->pending = false; s->hold_b = 0;
+  P[slot].seat = id; P[slot].prev = s->btn;
+  if (id >= SEAT_KB(0) && !phone) P[slot].kb = id - SEAT_KB(0);
+  if (phone) welcome(slot);
+  return slot;
+}
+
+/* PLAY: the owner is P1, then everyone at the door in seat order */
+static void front_end_play(void) {
+  game_begin_lobby();
+  M.lobby_t = 25; M.ready_t = 0;
+  if (M.owner >= 0) seat_in(M.owner);
+  for (int i = 0; i < SEAT_COUNT; i++) if (seats[i].present && seats[i].pending && seats[i].slot < 0) seat_in(i);
+  /* the rules flash belongs to a later stage; until then PLAY goes straight in */
+  M.prev_screen = SCR_MAIN; M.screen = SCR_NONE; M.t = 0;
+}
+
+/* the owner, alone in the lobby, held B: back to the menu with the seat kept */
+static void front_end_back_to_menu(void) {
+  int o = M.owner;
+  game_quit_to_title();
+  for (int i = 0; i < SEAT_COUNT; i++) { seats[i].slot = -1; seats[i].hold_b = 0; }
+  M.owner = o; M.prev_screen = SCR_NONE; M.screen = SCR_MAIN; M.t = 0; M.row = 0; M.cur_y = 200; M.idle = 0;
+  M.lobby_t = 25; M.ready_t = 0;
+  audio_play(SFX_MENU_BACK);
+}
+
+static void menu_select(void) {
+  audio_play(SFX_MENU_OK);
+  M.sel_t = 0.08f;
+  fx2_burst(FX2_SPARK, 616, 200 + M.row * 64 + 28, C_HAZARD);
+  switch (M.row) {
+    case 0: front_end_play(); break;
+    case 1: menu_goto(SCR_MODES); break;
+    case 2: M.settings_then = TO_MAIN; menu_goto(SCR_SETTINGS); break;
+    case 3: M.flash_return = SCR_MAIN; menu_goto(SCR_FLASH); break;
+    case 4: menu_goto(SCR_CREDITS); break;
+  }
+}
+
+static void menu_main_input(int nav) {
+  int n = COUNT(MENU_ROWS);
+  if (nav & (NAV_UP | NAV_DOWN)) {
+    int d = (nav & NAV_UP) ? -1 : 1;
+    M.row = (M.row + d + n) % n; M.cur_dir = d; M.snap_t = 0;
+    audio_play(SFX_MENU_MOVE);
+  }
+  if (M.row == 0 && (nav & (NAV_LEFT | NAV_RIGHT))) {
+    int d = (nav & NAV_LEFT) ? -1 : 1;
+    SET.mode = (uint8_t)((SET.mode + d + MODE_COUNT) % MODE_COUNT);
+    save_commit();
+    M.val_slide = 0.18f; M.val_dir = d;
+    audio_play(SFX_MENU_MOVE);
+  }
+  if (nav & NAV_B) { M.owner = -1; menu_goto(SCR_TITLE); audio_play(SFX_MENU_BACK); return; }
+  if (nav & NAV_START) { M.row = 0; menu_select(); return; }
+  if (nav & NAV_A) menu_select();
+}
+
+static void menu_update(float dt) {
+  M.t += dt; M.snap_t += dt;
+  if (M.deny_t > 0) M.deny_t -= dt;
+  if (M.status_t > 0) M.status_t -= dt;
+  if (M.sel_t > 0) M.sel_t -= dt;
+  if (M.val_slide > 0) M.val_slide -= dt;
+  /* a phone waiting at the door that the relay stopped hearing has gone */
+  for (int i = SEAT_PHONE(0); i < SEAT_COUNT; i++) {
+    seat_t *s = &seats[i];
+    if (!s->present || s->slot >= 0) continue;
+    if (net_online()) s->seen += dt;
+    if (s->seen > 12) { s->present = s->pending = false; if (M.owner == i) M.owner = -1; }
+  }
+  if (front_end_up()) {
+    int any = 0, claim = -1;
+    for (int i = 0; i < SEAT_COUNT; i++) {
+      any |= seats[i].nav;
+      if (claim < 0 && (seats[i].nav & (NAV_A | NAV_START))) claim = i;
+    }
+    switch (M.screen) {
+      case SCR_TITLE:
+        M.title_idle += dt;
+        if (any) M.title_idle = 0;
+        if (claim >= 0) { seat_owner(claim); menu_goto(SCR_MAIN); audio_play(SFX_MENU_OK); }
+        else if (M.title_idle > 20) menu_goto(SCR_ATTRACT);
+        break;
+      case SCR_ATTRACT:
+        if (any) {
+          M.title_idle = 0;
+          menu_goto(SCR_TITLE);
+          if (claim >= 0) { seat_owner(claim); menu_goto(SCR_MAIN); audio_play(SFX_MENU_OK); }
+          else audio_play(SFX_MENU_MOVE);
+        }
+        break;
+      default: {
+        if (M.owner < 0 || !seats[M.owner].present) { M.owner = -1; menu_goto(SCR_TITLE); break; }
+        int nav = seats[M.owner].nav;
+        if (nav) M.idle = 0; else M.idle += dt;
+        if (M.idle > 20) {
+          int p = lowest_pending();
+          if (p >= 0) { seat_owner(p); audio_play(SFX_MENU_OK); }
+          else { M.owner = -1; menu_goto(SCR_TITLE); audio_play(SFX_MENU_BACK); break; }
+          nav = 0;
+        }
+        for (int i = 0; i < SEAT_COUNT; i++) if (i != M.owner && (seats[i].nav & (NAV_A | NAV_START))) deny_seat(i);
+        if (M.screen == SCR_MAIN) menu_main_input(nav);
+        else if (nav & (NAV_A | NAV_B | NAV_START)) { menu_goto(SCR_MAIN); audio_play(SFX_MENU_BACK); }   /* the placeholder screens */
+        break;
+      }
+    }
+  }
+  /* mirrored for draw.c */
+  M.pending_count = 0;
+  for (int i = 0; i < SEAT_COUNT; i++) {
+    if (seats[i].present && seats[i].pending && seats[i].slot < 0) M.pending_seat[M.pending_count++] = i;
+    memcpy(M.seat_name[i], seats[i].name, sizeof M.seat_name[i]);
+  }
+}
+
+/* ── joins, play input, ready and leave ─────────────────────────── */
+
+static bool can_join(void) { return G.phase == PH_LOBBY || (G.phase == PH_NIGHT && !G.attract); }
+
+static void toggle_ready(int slot) {
+  player_t *p = &P[slot];
+  p->ready = !p->ready;
+  if (!p->ready) { audio_play(SFX_MENU_BACK); return; }
+  audio_play(SFX_READY);
+  for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active && !P[i].bot && !P[i].ready) {
+    snprintf(M.status, sizeof M.status, "WAITING ON %s", P[i].name);
+    M.status_t = 2;
+    break;
+  }
+}
 
 /* one pad or keyboard seat: an A or START edge on an unseated seat clocks
- * in; a seated seat drives its player */
-static void seat_step(seat_t *s, int id, int pad) {
+ * in (lobby and night only); a seated seat drives its player, and in the
+ * lobby START is READY and a held B is the way home */
+static void seat_step(seat_t *s, int id, int pad, float dt) {
   uint32_t b = s->btn, prev = s->prev;
   bool edge_a = (b & IN_A) && !(prev & IN_A), edge_s = (b & IN_START) && !(prev & IN_START);
   if (edge_a || edge_s) any_pressed = true;
   if (s->slot >= 0 && !P[s->slot].active) s->slot = -1;
-  if (s->slot >= 0 && edge_s) start_pressed = true;   /* the press that clocks you in does not also start the night */
   if (s->slot < 0) {
-    if ((edge_a || edge_s) && G.phase != PH_RESULTS) {
+    s->hold_b = 0;
+    if ((edge_a || edge_s) && can_join()) {
       s->slot = game_add_player(false, pad, NULL, s->name);
-      if (s->slot >= 0) { P[s->slot].prev = b; P[s->slot].seat = id; }
+      if (s->slot >= 0) { P[s->slot].prev = b; P[s->slot].seat = id; s->pending = false; }
     }
     return;
   }
+  if (G.phase == PH_LOBBY) {
+    if (edge_s) toggle_ready(s->slot);
+    s->hold_b = (b & IN_B) ? s->hold_b + dt : 0;
+  } else s->hold_b = 0;
   game_player_input(s->slot, b, s->sx, s->sy);
 }
 
@@ -314,16 +513,40 @@ static void went_home(seat_t *s) {
   game_remove_player(s->slot); s->slot = -1;
 }
 
-/* joins, play input and the idle rule. The menus that gate joining to the
- * lobby arrive with the front end; until then a press joins in any phase but
- * the results, exactly as before */
+/* the lowest seat that is seated, for the owner handover */
+static int lowest_seated(void) {
+  for (int i = 0; i < SEAT_COUNT; i++) if (seats[i].slot >= 0 && P[seats[i].slot].active) return i;
+  return -1;
+}
+
+/* hold B in the lobby: 1.5 s and you go home; the owner alone gets 1.0 s and the menu */
+static void lobby_leave(void) {
+  for (int i = 0; i < MAX_PLAYERS; i++) M.hold_b[i] = 0;
+  M.tape_held = false;
+  if (G.phase != PH_LOBBY) return;
+  for (int i = 0; i < SEAT_COUNT; i++) {
+    seat_t *s = &seats[i];
+    if (s->slot < 0 || s->hold_b <= 0) continue;
+    bool alone = i == M.owner && human_count() == 1;
+    float need = alone ? 1.0f : 1.5f;
+    M.hold_b[s->slot] = fminf(1, s->hold_b / need);
+    M.tape_held = true;
+    if (s->hold_b < need) continue;
+    if (alone) { front_end_back_to_menu(); return; }
+    went_home(s);
+    s->hold_b = 0;
+    audio_play(SFX_MENU_BACK);
+    if (i == M.owner) M.owner = lowest_seated();
+  }
+}
+
 static void seats_join(float dt) {
-  any_pressed = start_pressed = false;
-  for (int i = 0; i < SEAT_PADS; i++) seat_step(&seats[SEAT_PAD(i)], SEAT_PAD(i), i);
+  any_pressed = false;
+  for (int i = 0; i < SEAT_PADS; i++) seat_step(&seats[SEAT_PAD(i)], SEAT_PAD(i), i, dt);
   for (int k = 0; k < SEAT_KBS; k++) {
     seat_t *s = &seats[SEAT_KB(k)];
     int before = s->slot;
-    seat_step(s, SEAT_KB(k), -1);
+    seat_step(s, SEAT_KB(k), -1, dt);
     if (s->slot >= 0 && before < 0) P[s->slot].kb = k;
   }
   /* someone who clocked in on a pad or the keyboard and walked away goes home
@@ -348,17 +571,21 @@ static void seats_join(float dt) {
     }
     uint32_t edge = ph->btn & ~p->prev;
     if (edge & (IN_A | IN_START)) any_pressed = true;
-    if (edge & IN_START) start_pressed = true;
+    if (G.phase == PH_LOBBY) {
+      if (edge & IN_START) toggle_ready(ph->slot);
+      ph->hold_b = (ph->btn & IN_B) ? ph->hold_b + dt : 0;
+    } else ph->hold_b = 0;
     game_player_input(ph->slot, ph->btn, ph->sx, ph->sy);
   }
+  lobby_leave();
   for (int i = 0; i < SEAT_COUNT; i++) seats[i].prev = seats[i].btn;
 }
 
-/* the phone seat (0..SEAT_PHONES-1) seated with this id, or -1 */
-static int phone_slot(const char *pid) {
+/* the phone seat (0..SEAT_PHONES-1) registered with this id, seated or waiting at the door, or -1 */
+static int phone_seat(const char *pid) {
   for (int i = 0; i < SEAT_PHONES; i++) {
     const seat_t *s = &seats[SEAT_PHONE(i)];
-    if (s->slot >= 0 && !strcmp(P[s->slot].pid, pid)) return i;
+    if (s->present && !strcmp(s->pid, pid)) return i;
   }
   return -1;
 }
@@ -370,7 +597,7 @@ static void welcome(int slot) {
 }
 
 void game_on_phone(const char *pid, const char *msg) {
-  int k = phone_slot(pid);
+  int k = phone_seat(pid);
   if (msg[0] == 'J') {
     /* names come from strangers' phones: short, caps, printable */
     char name[14];
@@ -380,19 +607,28 @@ void game_on_phone(const char *pid, const char *msg) {
       if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' || c == '.' || c == '\'' || c == '_') name[n++] = (char)c;
     }
     name[n] = 0;
-    if (k >= 0) { P[seats[SEAT_PHONE(k)].slot].seen = 0; welcome(seats[SEAT_PHONE(k)].slot); return; }
-    if (G.phase == PH_RESULTS) { net_send(pid, "H"); return; }   /* hold on: next round */
-    int slot = game_add_player(true, -1, pid, n ? name : NULL);
-    if (slot < 0) { net_send(pid, "F"); return; }
-    for (int i = 0; i < SEAT_PHONES; i++) {
-      seat_t *s = &seats[SEAT_PHONE(i)];
-      if (s->slot >= 0) continue;
-      *s = (seat_t){ .present = true, .slot = slot };
-      snprintf(s->pid, sizeof s->pid, "%s", pid);
-      snprintf(s->name, sizeof s->name, "%s", P[slot].name);
-      P[slot].seat = SEAT_PHONE(i);
-      break;
+    if (!SET.phones) { net_send(pid, "F"); return; }
+    if (k >= 0) {
+      seat_t *s = &seats[SEAT_PHONE(k)];
+      s->seen = 0;
+      if (s->slot >= 0) { P[s->slot].seen = 0; welcome(s->slot); }
+      else net_send(pid, "H");
+      return;
     }
+    if (G.phase == PH_RESULTS) { net_send(pid, "H"); return; }   /* hold on: next round */
+    int free_seat = -1;
+    for (int i = 0; i < SEAT_PHONES; i++) if (!seats[SEAT_PHONE(i)].present) { free_seat = SEAT_PHONE(i); break; }
+    if (free_seat < 0) { net_send(pid, "F"); return; }
+    seat_t *s = &seats[free_seat];
+    *s = (seat_t){ .present = true, .slot = -1 };
+    snprintf(s->pid, sizeof s->pid, "%s", pid);
+    if (n) snprintf(s->name, sizeof s->name, "%s", name);
+    else snprintf(s->name, sizeof s->name, "PHONE %d", free_seat - SEAT_PHONE(0) + 1);
+    /* on the front end a phone waits at the door until PLAY opens the lobby */
+    if (front_end_up()) { s->pending = true; net_send(pid, "H"); return; }
+    int slot = game_add_player(true, -1, pid, s->name);
+    if (slot < 0) { s->present = false; net_send(pid, "F"); return; }
+    s->slot = slot; P[slot].seat = free_seat;
     welcome(slot);
   } else if (msg[0] == 'I') {
     if (k < 0) { net_send(pid, "R"); return; }   /* the cart restarted: please rejoin */
@@ -405,9 +641,15 @@ void game_on_phone(const char *pid, const char *msg) {
     if (ph->sx < -1) ph->sx = -1;
     if (ph->sy > 1) ph->sy = 1;
     if (ph->sy < -1) ph->sy = -1;
-    P[ph->slot].seen = 0;
+    ph->seen = 0;
+    if (ph->slot >= 0) P[ph->slot].seen = 0;   /* input reaches the sim only once the phone has a slot (seats_join) */
   } else if (msg[0] == 'L') {
-    if (k >= 0) { seat_t *s = &seats[SEAT_PHONE(k)]; game_remove_player(s->slot); s->slot = -1; s->present = false; }
+    if (k >= 0) {
+      seat_t *s = &seats[SEAT_PHONE(k)];
+      if (s->slot >= 0) game_remove_player(s->slot);
+      s->slot = -1; s->present = s->pending = false;
+      if (M.owner == SEAT_PHONE(k)) M.owner = -1;
+    }
   }
 }
 
@@ -443,32 +685,61 @@ static void phone_status(float dt) {
 
 /* ── the frame ───────────────────────────────────────────────────── */
 
-static float empty_t;
+static bool all_ready(void) {
+  int h = 0;
+  for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active && !P[i].bot) { if (!P[i].ready) return false; h++; }
+  return h > 0;
+}
+
+/* the night start tape wipe; game_start_night fires at the closed frame */
+static void begin_night(void) {
+  if (G.wipe_t > 0) return;
+  G.wipe_t = 0.6f;
+  G.group_nights++;
+}
 
 static void flow(float dt) {
   int n = player_count();
+  if (G.wipe_t > 0) {
+    float before = G.wipe_t;
+    G.wipe_t -= dt;
+    if (before > 0.3f && G.wipe_t <= 0.3f && G.phase == PH_LOBBY) game_start_night();
+    if (G.wipe_t < 0) { G.wipe_t = 0; M.ready_t = 0; }
+  }
   switch (G.phase) {
     case PH_LOBBY:
-      if (n == 0) { if ((empty_t += dt) > 6) { G.phase = PH_TITLE; G.t = 0; } }
-      else {
+      if (n > last_n) M.lobby_t = 25;   /* every join resets the clock */
+      if (n == 0) { if ((empty_t += dt) > 6) new_group(); }
+      else if (G.wipe_t <= 0) {
         empty_t = 0;
-        if (start_pressed || G.t >= 25) game_start_night();
+        if (!M.tape_held) M.lobby_t -= dt;
+        if (M.lobby_t < 0) M.lobby_t = 0;
+        if (all_ready()) {
+          float before = M.ready_t;
+          M.ready_t += dt;
+          if (M.ready_t >= 3) { audio_play(SFX_GO); begin_night(); }
+          else if (before == 0 || (int)before != (int)M.ready_t) audio_play(SFX_COUNTDOWN);
+        } else {
+          M.ready_t = 0;
+          if (M.lobby_t <= 0) begin_night();
+        }
       }
       break;
     case PH_NIGHT:
       if (G.attract) break;
       if (human_count() == 0) { game_remove_bots(); n = 0; }
-      if (n == 0) { if ((empty_t += dt) > 12) { G.phase = PH_TITLE; G.t = 0; audio_music(1); } }
+      if (n == 0) { if ((empty_t += dt) > 12) new_group(); }
       else empty_t = 0;
       break;
     case PH_RESULTS:
       if ((G.t > 4 && any_pressed) || G.t > 40) {
         game_remove_bots();
-        G.phase = human_count() ? PH_LOBBY : PH_TITLE; G.t = 0; audio_music(1);
+        if (human_count()) { G.phase = PH_LOBBY; G.t = 0; M.lobby_t = 25; M.ready_t = 0; audio_music(1); }
+        else new_group();
       }
       break;
     case PH_TITLE:
-      /* attract mode: three archetypes play a night while nobody is here */
+      /* attract mode: three archetypes play a night behind the menus */
       if (G.t > 1.5f) {
         G.attract = true;
         game_add_bot(BOT_BUILDER); game_add_bot(BOT_TALKER); game_add_bot(BOT_FOUNDER);
@@ -477,16 +748,24 @@ static void flow(float dt) {
       break;
     default: break;
   }
+  last_n = player_count();
 }
 
+/* the orbit over the storefront behind the menus, the play camera otherwise,
+ * with a 0.8 s ease between them */
 static void camera(float dt) {
   static float t;
   t += dt;
-  float x = 0, y = 21.5f, z = 15.0f, lx = 0, lz = -1.25f;
-  if (G.phase == PH_TITLE || G.attract) { x = sinf(t * 0.12f) * 5; y = 16.5f; z = 12.5f + cosf(t * 0.12f) * 1.5f; lx = 0; lz = 4.5f; }   /* the start screen opens on the storefront */
+  float target = front_end_up() ? 0 : 1;
+  if (M.cam_blend < target) M.cam_blend = fminf(target, M.cam_blend + dt / 0.8f);
+  else M.cam_blend = fmaxf(target, M.cam_blend - dt / 0.8f);
+  float k = hud_ease_inout(M.cam_blend);
+  float ox = sinf(t * 0.12f) * 5, oy = 16.5f, oz = 12.5f + cosf(t * 0.12f) * 1.5f, olz = 4.5f;   /* the start screen opens on the storefront */
+  float px = 0, py = 21.5f, pz = 15.0f, plz = -1.25f;
+  float x = ox + (px - ox) * k, y = oy + (py - oy) * k, z = oz + (pz - oz) * k, lz = olz + (plz - olz) * k;
   if (G.shake > 0) { x += sinf(t * 60) * G.shake * 0.3f; }
   t3_object_set_position(world_cam, x, y, z);
-  t3_object_look_at(world_cam, lx, 0, lz);
+  t3_object_look_at(world_cam, 0, 0, lz);
 }
 
 __attribute__((export_name("wc_render")))
@@ -496,6 +775,7 @@ void wc_render(void) {
   if (dt <= 0) dt = 1.f / 60;
 
   seats_poll(dt);
+  menu_update(dt);
   seats_join(dt);
   net_update(dt);
   if (!G.paused) game_update(dt);

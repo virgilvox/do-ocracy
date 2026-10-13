@@ -14,6 +14,7 @@
 #include <string.h>
 
 static float T;
+static bool names_only, bot_guides;   /* attract: station names without status lines, guides for the bots */
 
 bool project(float x, float y, float z, int *sx, int *sy) {
   t3_vec3 v = t3_vec3_apply_mat4(t3_v3(x, y, z), &world_cam->matrix_world_inverse);
@@ -53,7 +54,7 @@ static bool hits(int x, int y, int w, int h) {
   return false;
 }
 static int settle(int x, int y, int w, int h) {
-  static const int steps[] = { 0, 1, -1, 2, -2, 3, -3 };
+  static const int steps[] = { 0, 1, -1, 2, -2, 3, -3, -4, -5, -6 };   /* the far steps lift labels out of the lobby card band */
   for (unsigned i = 0; i < sizeof steps / sizeof steps[0]; i++) {
     int ty = y + steps[i] * (h / 2 + 3);
     if (!hits(x, ty, w, h)) { reserve(x, ty, w, h); return ty; }
@@ -222,6 +223,7 @@ static void station_labels(void) {
       if (dx < 2.2f && dz < 2.2f) near = true;
     }
     bool ready = (i == ST_LASER && s->state == S_LOADED) || ((i == ST_PRINT1 || i == ST_PRINT2) && s->state == S_DONE);
+    if (names_only) { st[0] = 0; alarm = false; }
     if (!(alarm || ready || near)) st[0] = 0;
     if (!(alarm || ready || near || s->always_label)) continue;
     uint32_t edge = pay == 1 ? C_HAZARD : pay == 2 ? C_LIVE : C_STEEL_HI;
@@ -291,7 +293,7 @@ static void npcs_overlay(void) {
 static void goal_guides(void) {
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &P[i];
-    if (!p->active || !p->has_goal || p->bot) continue;
+    if (!p->active || !p->has_goal || (p->bot && !bot_guides)) continue;
     station_t *s = &S[p->goal_st];
     /* target footprint, pulsing in the player's colour */
     float pulse = 0.5f + 0.5f * sinf(T * 6);
@@ -382,30 +384,6 @@ static void players_overlay(void) {
 
 /* ── panels ──────────────────────────────────────────────────────── */
 
-static void join_panel(int x, int y, bool big) {
-  int w = big ? 300 : 232, q = big ? 172 : 104;
-  int h = big ? 290 : 158;
-  if (!net_online()) h = 108;
-  hud_panel(x, y, w, h, C_SLAB, C_STEEL_HI);
-  if (net_online()) {
-    hud_qr(x + 12, y + 12, q, G.join_url);
-    if (big) {
-      hud_eyebrow(x + 12, y + q + 22, "SCAN TO JOIN", C_ASH, AL_LEFT);
-      hud_text(F_H1, x + 10, y + q + 38, G.room, C_HAZARD, 255, AL_LEFT);
-      hud_text(F_MONO_S, x + w - 12, y + q + 64, "NO APP", C_ASH, 255, AL_RIGHT);
-      hud_text(F_MONO_S, x + w - 12, y + q + 84, "NO ACCOUNT", C_ASH, 255, AL_RIGHT);
-    } else {
-      hud_eyebrow(x + q + 20, y + 14, "JOIN", C_ASH, AL_LEFT);
-      hud_text(F_H3, x + q + 18, y + 34, G.room, C_HAZARD, 255, AL_LEFT);
-      hud_text(F_MONO_S, x + q + 20, y + 76, "SCAN IT", C_ASH, 255, AL_LEFT);
-      hud_text(F_MONO_S, x + q + 20, y + 96, "ANY PHONE", C_ASH, 255, AL_LEFT);
-    }
-  } else {
-    hud_eyebrow(x + 14, y + 16, "PHONES OFFLINE", C_ASH, AL_LEFT);
-    hud_text_wrap(F_MONO, x + 14, y + 44, w - 28, "GRAB A CONTROLLER.", C_BONE, 255, 26);
-  }
-}
-
 static void join_strip(int x, int y) {
   hud_panel(x, y, 320, 56, C_SLAB, C_STEEL_HI);
   if (net_online()) {
@@ -419,16 +397,19 @@ static void join_strip(int x, int y) {
   }
 }
 
-/* the feed: three short lines, gone in a few seconds */
-static void toasts(int x, int y) {
-  for (int i = 0; i < 3; i++) {
+/* the feed: the two newest lines, right aligned under the top bar, gone in a few seconds */
+static void toasts(int xr, int y) {
+  int shown = 0;
+  for (int i = 0; i < TOASTS && shown < 2; i++) {
     if (toast_t[i] <= 2) continue;
     float t = toast_t[i] - 2;
     int a = t < 1 ? (int)(t * 255) : 255;
-    int w = hud_text_w(F_MONO_S, toast_text[i]);
-    hud_rect(x, y - i * 24, w + 18, 21, C_CHAR, a * 210 / 255);
-    hud_rect(x, y - i * 24, 4, 21, toast_col[i], a);
-    hud_text(F_MONO_S, x + 10, y - i * 24 + 2, toast_text[i], C_BONE, a, AL_LEFT);
+    int w = hud_text_w(F_MONO_S, toast_text[i]) + 18;
+    int ty = y + shown * 24;
+    hud_rect(xr - w, ty, w, 21, C_CHAR, a * 210 / 255);
+    hud_rect(xr - 4, ty, 4, 21, toast_col[i], a);
+    hud_text(F_MONO_S, xr - w + 8, ty + 2, toast_text[i], C_BONE, a, AL_LEFT);
+    shown++;
   }
 }
 
@@ -490,7 +471,7 @@ static void top_bar(void) {
     hud_rect(bx, by, bw, 5, C_CHAR, 255);
     hud_rect(bx, by, (int)(bw * fminf(1, f)), 5, closing ? C_RUST : C_HAZARD, 255);
     for (int h = 1; h < 4; h++) hud_rect(bx + bw * h / 4, by, 2, 5, C_STEEL_HI, 255);
-  } else hud_text(F_MONO_S, 306, 10, "CLOCKING IN", C_ASH, 255, AL_RIGHT);
+  } else { hud_text(F_MONO_S, 306, 10, "DOORS OPEN", C_ASH, 255, AL_RIGHT); return; }   /* the lobby panel takes the meters' place */
 
   hud_panel(330, 6, 600, 56, C_SLAB, C_STEEL_HI);
   float c = G.clutter > 100 ? 100 : G.clutter;
@@ -566,99 +547,456 @@ static void coach(void) {
 
 /* ── full screens ────────────────────────────────────────────────── */
 
-static int flow_chip(int x, int y, const char *s, uint32_t c) {
-  int w = hud_text_w(F_MONO_S, s) + 20;
-  hud_rect(x + 3, y + 3, w, 26, C_SHADOW, 255);
-  hud_rect(x, y, w, 26, C_CHAR, 255);
-  hud_frame(x, y, w, 26, 2, c, 255);
-  hud_text(F_MONO_S, x + w / 2, y + 4, s, C_BONE, 255, AL_CENTER);
-  return w;
+/* ── the front end: title, attract, main menu (FINAL-frontend.md 6.1 to 6.3) ── */
+
+static float clampf(float v, float a, float b) { return v < a ? a : v > b ? b : v; }
+static int lerpi(int a, int b, float k) { return a + (int)((b - a) * k); }
+static bool phones_on(void) { return SET.phones && net_online(); }
+static int seat_glyph(int seat) { return seat < 0 ? GL_BOT : seat < SEAT_KB(0) ? GL_PAD : seat < SEAT_PHONE(0) ? GL_KEYS : GL_PHONE; }
+static const char *seat_cap(int seat, int btn) {
+  static const char *const PAD[4] = { "A", "B", "X", "START" };
+  static const char *const KB0[4] = { "SPACE", "Q", "R", "ENTER" };
+  static const char *const KB1[4] = { ".", ",", "/", "RSHIFT" };
+  return seat == SEAT_KB(0) ? KB0[btn] : seat == SEAT_KB(1) ? KB1[btn] : PAD[btn];
 }
 
-static int flow_arrow(int x, int y, uint32_t c) {
-  hud_chevron((float)x + 12, (float)y + 13, 1, 0, 14, 4, c, 255);
-  return 26;
+/* the call to action: a hazard block that breathes 8 px on a 1.4 s period and never blinks off */
+static void cta(int x, int y, int w, int h, int font, const char *s, int a) {
+  int g = (int)((0.5f + 0.5f * sinf(T * 4.4f)) * 8);
+  int bx = x - g / 2, by = y - g / 2, bw = w + g, bh = h + g;
+  hud_rect(bx + 6, by + 6, bw, bh, C_SHADOW, a);
+  hud_rect(bx, by, bw, bh, C_HAZARD, a);
+  hud_text(font, x + w / 2, y + (h - hud_font_h(font)) / 2, s, C_TAPE, a, AL_CENTER);
 }
 
-/* the how-to board: two paths, one rule */
-static void how_to(int x, int y, int w) {
-  hud_panel(x, y, w, 296, C_SLAB, C_STEEL_HI);
-  hud_eyebrow(x + 16, y + 14, "HOW TUESDAY WORKS", C_ASH, AL_LEFT);
-  int cy = y + 40;
-  hud_rect(x + 16, cy, 8, 64, C_HAZARD, 255);
-  hud_text(F_H3, x + 34, cy - 2, "CLOUT", C_HAZARD, 255, AL_LEFT);
-  hud_text(F_MONO_S, x + 140, cy + 6, "FOR YOU", C_ASH, 255, AL_LEFT);
-  int fx = x + 34, fy = cy + 32;
-  fx += flow_chip(fx, fy, S[ST_LUMBER].label, C_HAZARD); fx += flow_arrow(fx, fy, C_HAZARD);
-  fx += flow_chip(fx, fy, S[ST_LASER].label, C_HAZARD); fx += flow_arrow(fx, fy, C_HAZARD);
-  flow_chip(fx, fy, S[ST_SHOW].label, C_HAZARD);
-  cy += 80;
-  hud_rect(x + 16, cy, 8, 64, C_LIVE, 255);
-  hud_text(F_H3, x + 34, cy - 2, "KARMA", C_LIVE, 255, AL_LEFT);
-  hud_text(F_MONO_S, x + 146, cy + 6, "FOR THE SPACE", C_ASH, 255, AL_LEFT);
-  fx = x + 34; fy = cy + 32;
-  fx += flow_chip(fx, fy, "MESS", C_LIVE); fx += flow_arrow(fx, fy, C_LIVE);
-  fx += flow_chip(fx, fy, "TRASH", C_LIVE); fx += 10;
-  fx += flow_chip(fx, fy, "DISHES", C_LIVE); fx += 10;
-  flow_chip(fx, fy, "SAY HI", C_LIVE);
-  cy += 80;
-  hud_rect(x + 16, cy, w - 32, 50, C_FAULT, 255);
-  hud_text(F_MONO_S, x + 28, cy + 7, "CLUTTER 100 OR VIBE 0 CLOSES THE SPACE.", C_BONE, 255, AL_LEFT);
-  hud_text(F_MONO_S, x + 28, cy + 27, "THEN EVERYONE'S CLOUT IS VOID.", C_BONE, 255, AL_LEFT);
+/* 0 the big title, 1 the mark in the corner; eased over 0.35 s between them */
+static float mark_k(void) {
+  bool now = M.screen != SCR_TITLE, before = M.prev_screen != SCR_TITLE;
+  if (now == before) return now ? 1 : 0;
+  float e = hud_ease_out(fminf(1, M.t / 0.35f));
+  return now ? e : 1 - e;
 }
 
-static void controls_card(int x, int y, int w) {
-  hud_panel(x, y, w, 150, C_SLAB, C_STEEL_HI);
-  hud_eyebrow(x + 16, y + 14, "BUTTONS", C_ASH, AL_LEFT);
-  static const char *const ROWS[4][4] = {
-    { "PAD", "A", "B", "X" },
-    { "WASD", "SPACE", "Q", "R" },
-    { "ARROWS", ".", ",", "/" },
-    { "PHONE", "A", "B", "X" },
-  };
-  hud_text(F_MONO_S, x + 120, y + 14, "DO IT", C_HAZARD, 255, AL_LEFT);
-  hud_text(F_MONO_S, x + 210, y + 14, "DROP", C_BONE, 255, AL_LEFT);
-  hud_text(F_MONO_S, x + 290, y + 14, "PROPOSE", C_ASH, 255, AL_LEFT);
-  for (int r = 0; r < 4; r++) {
-    int ry = y + 38 + r * 27;
-    hud_text(F_MONO_S, x + 16, ry + 4, ROWS[r][0], C_BONE, 255, AL_LEFT);
-    hud_keycap(x + 120, ry, ROWS[r][1], C_HAZARD, C_TAPE);
-    hud_keycap(x + 210, ry, ROWS[r][2], C_BONE, C_TAPE);
-    hud_keycap(x + 290, ry, ROWS[r][3], C_VIOLET, C_TAPE);
+/* 6.1: the band over the running room; f fades it out as the menu comes in */
+static void title_idle(float f) {
+  int a = (int)(255 * f), late = (int)(255 * clampf((f - 0.57f) / 0.43f, 0, 1));
+  hud_rect(0, 190, HUD_W, 240, C_CHAR, (int)(150 * f));
+  hud_rect(0, 190, HUD_W, 2, C_STEEL_HI, a);
+  hud_rect(0, 428, HUD_W, 2, C_STEEL_HI, a);
+  hud_set_alpha(a);
+  hud_eyebrow(356, 222, "HEATSYNC LABS ARCADE", C_ASH, AL_LEFT);
+  hud_set_alpha(255);
+  hud_text_sh(F_TITLE, 350, 248, "DO-OCRACY", C_BONE, late, AL_LEFT);
+  /* one tagline at a time, crossfading every 6 s */
+  float ph = fmodf(T, 6.0f);
+  float ta = ph < 0.15f ? ph / 0.15f : ph > 5.85f ? (6 - ph) / 0.15f : 1;
+  hud_text_sh(F_H3, 356, 392, TAGLINES[(int)(T / 6.0f) % COUNT(TAGLINES)], C_HAZARD, (int)(late * ta), AL_LEFT);
+  if (late <= 0) return;
+  cta(430, 500, 420, 56, F_H2, "PRESS A", late);
+  if (M.kb_seen) hud_text(F_MONO_S, 640, 566, "OR SPACE ON A KEYBOARD", C_ASH, late, AL_CENTER);
+  if (M.pending_count) {
+    char b[32]; snprintf(b, sizeof b, "%d AT THE DOOR", M.pending_count);
+    hud_text(F_MONO_S, 640, 586, b, C_ASH, late, AL_CENTER);
+  }
+  if (phones_on()) {
+    hud_set_alpha(late);
+    hud_panel(1040, 540, 216, 124, C_SLAB, C_STEEL_HI);
+    hud_qr(1052, 554, 96, G.join_url);
+    hud_eyebrow(1160, 562, "PHONES", C_ASH, AL_LEFT);
+    hud_text(F_H3, 1158, 584, G.room, C_HAZARD, 255, AL_LEFT);
+    hud_set_alpha(255);
+  }
+  hud_text(F_MONO_S, 1256, 690, "HEATSYNC LABS. MESA. SINCE 2009.", C_SMOKE, late, AL_RIGHT);
+}
+
+/* 6.2: the bots get the overlays a player would, faded, under the front end */
+static void attract_overlay(void) {
+  hud_set_alpha(150);
+  names_only = true; station_labels(); names_only = false;
+  bot_guides = true; goal_guides(); bot_guides = false;
+  hud_set_alpha(170);
+  players_overlay();
+  hud_set_alpha(255);
+}
+
+static void attract_screen(void) {
+  float up = hud_ease_out(fminf(1, M.t / 0.3f));
+  cta(1040, 620, 216, 44, F_H3, "PRESS A", 255);
+  int y = 680 + (int)(40 * (1 - up));
+  hud_rect(0, y, HUD_W, 40, C_TAPE, 255);
+  hud_text(F_MONO, HUD_W / 2, y + 6, ATTRACT_TIPS[(int)(T / 3.0f) % COUNT(ATTRACT_TIPS)], C_ASH, 255, AL_CENTER);
+}
+
+/* rows come in from the left after the title clears, 0.04 s apart */
+static float row_in(int i) {
+  bool from_title = M.prev_screen == SCR_TITLE || M.prev_screen == SCR_ATTRACT;
+  if (!from_title) return 1;
+  return hud_ease_out(clampf((M.t - 0.15f - i * 0.04f) / 0.2f, 0, 1));
+}
+
+static void menu_preview(int row) {
+  hud_panel(700, 200, 540, 320, C_SLAB, C_STEEL_HI);
+  char b[64];
+  switch (row) {
+    case 0: {
+      const mode_def_t *m = &MODES[SET.mode < MODE_COUNT ? SET.mode : 0];
+      hud_glyph(724, 224, m->glyph, 2, m->color, 255);
+      snprintf(b, sizeof b, "%s %s", m->name1, m->name2);
+      hud_text(F_H3, 772, 232, b, C_BONE, 255, AL_LEFT);
+      hud_text_wrap(F_MONO, 724, 280, 480, m->blurb, C_BONE, 255, 26);
+      for (int k = 0; k < 3; k++) {
+        if (strchr(m->rule[k], '%')) snprintf(b, sizeof b, m->rule[k], NIGHT_LENS[SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1].name);
+        else snprintf(b, sizeof b, "%s", m->rule[k]);
+        hud_glyph(724, 428 + k * 22, m->rule_glyph[k], 1, C_ASH, 255);
+        hud_text(F_MONO_S, 748, 430 + k * 22, b, C_ASH, 255, AL_LEFT);
+      }
+      if (SET.mode == MODE_VERSUS && 1 + M.pending_count == 1 && !SET.bots) hud_text(F_MONO_S, 724, 496, NEEDS_LINE, C_INK_ERR, 255, AL_LEFT);
+      break;
+    }
+    case 1:
+      hud_eyebrow(724, 224, "FIVE WAYS TO RUN A TUESDAY", C_ASH, AL_LEFT);
+      for (int i = 0; i < MODE_COUNT; i++) {
+        int x = 724 + i * 100, y = 300;
+        hud_rect(x + 4, y + 4, 92, 120, C_SHADOW, 255);
+        hud_rect(x, y, 92, 120, C_CHAR, 255);
+        hud_frame(x, y, 92, 120, i == SET.mode ? 3 : 1, i == SET.mode ? C_HAZARD : C_STEEL_HI, 255);
+        hud_glyph(x + 30, y + 24, MODES[i].glyph, 2, MODES[i].color, 255);
+        hud_text(F_MONO_S, x + 46, y + 80, MODES[i].short_name, i == SET.mode ? C_BONE : C_ASH, 255, AL_CENTER);
+      }
+      break;
+    case 2: {
+      int y = 240;
+      snprintf(b, sizeof b, "NIGHT  %s", NIGHT_LENS[SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1].name);
+      hud_text(F_MONO, 724, y, b, C_BONE, 255, AL_LEFT);
+      snprintf(b, sizeof b, "BOTS %s   CHAOS %s   PHONES %s", ONOFF[SET.bots & 1], CHAOS_NAMES[SET.chaos <= CHAOS_CHAOS ? SET.chaos : 1], ONOFF[SET.phones & 1]);
+      hud_text(F_MONO, 724, y + 30, b, C_BONE, 255, AL_LEFT);
+      snprintf(b, sizeof b, "ROOM  %s", ROOM_NAMES[0]);
+      hud_text(F_MONO, 724, y + 60, b, C_BONE, 255, AL_LEFT);
+      snprintf(b, sizeof b, "MUSIC %d   SFX %d", SET.music, SET.sfx);
+      hud_text(F_MONO, 724, y + 90, b, C_BONE, 255, AL_LEFT);
+      break;
+    }
+    case 3: {
+      /* the first card of the rules flash, looping: walk up, hold A, the thing is done */
+      float lt = fmodf(T, 2.6f);
+      hud_pict_station(1040, 270, 150, 110, S[ST_LASER].label, C_HAZARD);
+      int px = 780 + (int)(200 * hud_ease_inout(fminf(1, lt / 1.0f)));
+      hud_pict_person(px, 290, 90, C_HAZARD, false);
+      if (lt > 1.1f) {
+        float f = fminf(1, (lt - 1.1f) / 1.0f);
+        hud_rect(980, 400, 200, 12, C_CHAR, 255);
+        hud_rect(980, 400, (int)(200 * f), 12, C_HAZARD, 255);
+        hud_keycap(940, 394, "A", C_HAZARD, C_TAPE);
+      }
+      hud_text_runs(F_H3, 970, 450, FLASH_CAPS[0], 255, AL_CENTER);
+      break;
+    }
+    case 4:
+      hud_logo(890, 250, 160, C_BONE);
+      hud_eyebrow(970, 440, "SINCE 2009", C_ASH, AL_CENTER);
+      break;
   }
 }
 
-static void title_screen(void) {
-  hud_rect(0, 0, HUD_W, HUD_H, C_CHAR, 150);
+/* AT THE DOOR: everyone who pressed A while somebody else was picking */
+static void who_is_in(void) {
+  if (!M.pending_count) return;
+  hud_panel(700, 536, 540, 96, C_SLAB, C_STEEL_HI);
+  hud_eyebrow(712, 548, "AT THE DOOR", C_ASH, AL_LEFT);
+  for (int k = 0; k < M.pending_count && k < 8; k++) {
+    int id = M.pending_seat[k];
+    int x = 712 + (k % 4) * 132, y = 576 + (k / 4) * 24;
+    char b[32]; snprintf(b, sizeof b, "P%d  %s", k + 2, M.seat_name[id]);
+    hud_rect(x, y, 128, 20, C_CHAR, 255);
+    hud_rect(x, y, 12, 20, PCOL[(k + 1) % MAX_PLAYERS], 255);
+    hud_glyph(x + 16, y + 2, seat_glyph(id), 1, C_BONE, 255);
+    hud_clip(x, y, 128, 20);
+    hud_text(F_MONO_S, x + 36, y + 1, b, C_BONE, 255, AL_LEFT);
+    hud_clip_clear();
+  }
+}
+
+static int footer_hint(int x, int y, const char *cap, const char *label) {
+  x += hud_keycap(x, y, cap, C_HAZARD, C_TAPE) + 8;
+  x += hud_text(F_MONO_S, x, y + 4, label, C_BONE, 255, AL_LEFT);
+  return x + 24;
+}
+
+static void owner_chip(int xr, int y) {
+  if (M.owner < 0) return;
+  char b[32]; snprintf(b, sizeof b, "P1  %s", M.seat_name[M.owner]);
+  int w = hud_text_w(F_MONO_S, b) + 48;
+  hud_rect(xr - w + 4, y + 4, w, 26, C_SHADOW, 255);
+  hud_rect(xr - w, y, w, 26, PCOL[0], 255);
+  hud_glyph(xr - w + 8, y + 5, seat_glyph(M.owner), 1, C_TAPE, 255);
+  hud_text(F_MONO_S, xr - 10, y + 5, b, C_TAPE, 255, AL_RIGHT);
+}
+
+static void deny_line(void) {
+  if (M.deny_t <= 0) return;
+  int a = M.deny_t < 0.3f ? (int)(255 * M.deny_t / 0.3f) : 255;
+  hud_text_sh(F_MONO, 356, 630, M.deny, C_INK_ERR, a, AL_CENTER);
+}
+
+static void menu_main(float dt) {
+  int ox = M.deny_t > 1.8f ? (int)(6 * sinf(M.deny_t * 60) * (M.deny_t - 1.8f) / 0.2f) : 0;
+  float in0 = row_in(0);
+  hud_set_alpha((int)(255 * in0));
+  hud_eyebrow(108, 100, "HEATSYNC LABS ARCADE", C_ASH, AL_LEFT);
+  hud_set_alpha(255);
+  /* the cursor block eases to the row with a small overshoot */
+  float target = 200 + M.row * 64;
+  hud_tween(&M.cur_y, target, 18, dt);
+  float over = 3 * M.cur_dir * (1 - hud_ease_back(fminf(1, M.snap_t / 0.22f)));
+  int cy = (int)(M.cur_y + over);
+  int ca = (int)(255 * row_in(M.row));
+  int cx = 96 + ox - (int)(60 * (1 - row_in(M.row)));
+  hud_rect(cx + 6, cy + 6, 520, 56, C_SHADOW, ca);
+  hud_rect(cx, cy, 520, 56, M.sel_t > 0 ? C_BONE : C_HAZARD, ca);
+  for (int i = 0; i < COUNT(MENU_ROWS); i++) {
+    float e = row_in(i);
+    int a = (int)(255 * e), x = 96 + ox - (int)(60 * (1 - e)), y = 200 + i * 64;
+    bool covered = fabsf(M.cur_y - y) < 28;
+    if (covered) hud_text(F_H2, x + 24, y + 6, MENU_ROWS[i], C_TAPE, a, AL_LEFT);
+    else hud_text_sh(F_H2, x + 24, y + 6, MENU_ROWS[i], C_BONE, a, AL_LEFT);
+    if (i == 0) {
+      /* PLAY carries the mode; left and right step it */
+      int slide = M.val_slide > 0 ? (int)(12 * M.val_dir * (1 - hud_ease_back(1 - M.val_slide / 0.18f))) : 0;
+      const char *v = MODES[SET.mode < MODE_COUNT ? SET.mode : 0].short_name;
+      uint32_t vc = covered ? C_TAPE : C_ASH;
+      hud_text(F_MONO_L, x + 480 + slide, y + 11, v, vc, a, AL_RIGHT);
+      if (M.row == 0) {
+        int vw = hud_text_w(F_MONO_L, v);
+        hud_chevron((float)(x + 480 - vw - 16), (float)(y + 28), -1, 0, 14, 4, C_TAPE, a);
+        hud_chevron((float)(x + 500), (float)(y + 28), 1, 0, 14, 4, C_TAPE, a);
+      }
+    }
+  }
+  float pin = row_in(COUNT(MENU_ROWS) - 1);
+  hud_set_alpha((int)(255 * pin));
+  menu_preview(M.row);
+  who_is_in();
+  deny_line();
+  /* footer: the owner's own buttons, and who is driving */
+  int fx = 96;
+  fx = footer_hint(fx, 672, seat_cap(M.owner, 0), "SELECT");
+  fx = footer_hint(fx, 672, seat_cap(M.owner, 1), "BACK");
+  if (M.row == 0) {
+    hud_chevron((float)fx + 8, 685, -1, 0, 12, 4, C_HAZARD, 255);
+    hud_chevron((float)fx + 26, 685, 1, 0, 12, 4, C_HAZARD, 255);
+    hud_text(F_MONO_S, fx + 42, 676, "CHANGE", C_BONE, 255, AL_LEFT);
+  }
+  owner_chip(1184, 670);
+  hud_set_alpha(255);
+}
+
+/* MODES, SETTINGS, HOW TO PLAY and CREDITS land in later stages; each is a
+ * card that says so and returns to the menu on any button */
+static void menu_unbuilt(void) {
+  static const char *const NAMES[] = { "", "", "", "MODES", "SETTINGS", "HOW TO PLAY", "CREDITS" };
+  int ox = (int)(60 * (1 - hud_ease_out(fminf(1, M.t / 0.14f))));
+  int a = (int)(255 * fminf(1, M.t / 0.14f));
+  hud_set_alpha(a);
+  hud_eyebrow(108 + ox, 100, NAMES[M.screen < SCR_NONE ? M.screen : 0], C_ASH, AL_LEFT);
+  hud_rect(96 + ox + 6, 206, 620, 150, C_SHADOW, 255);
+  hud_panel(96 + ox, 200, 620, 150, C_SLAB, C_STEEL_HI);
+  hud_rect(96 + ox, 200, 620, 8, C_HAZARD, 255);
+  hud_text(F_H3, 120 + ox, 228, NAMES[M.screen < SCR_NONE ? M.screen : 0], C_BONE, 255, AL_LEFT);
+  hud_text(F_MONO, 120 + ox, 276, UNBUILT_LINE, C_ASH, 255, AL_LEFT);
+  footer_hint(96, 672, seat_cap(M.owner, 1), "BACK");
+  deny_line();
+  owner_chip(1184, 670);
+  hud_set_alpha(255);
+}
+
+static void front_end(float dt) {
+  int scrim = 70;
+  if (M.screen == SCR_ATTRACT) scrim = (int)(70 * (1 - fminf(1, M.t / 0.5f)));
+  else if (M.prev_screen == SCR_ATTRACT && M.t < 0.3f) scrim = (int)(70 * M.t / 0.3f);
+  if (scrim > 0) hud_rect(0, 0, HUD_W, HUD_H, C_CHAR, scrim);
   hud_tape(0, 0, HUD_W, 24, T * 30);
-  hud_logo(64, 62, 200, C_BONE);
-  hud_eyebrow(290, 70, "HEATSYNC LABS ARCADE", C_ASH, AL_LEFT);
-  hud_text(F_TITLE, 282, 96, "DO-OCRACY", C_BONE, 255, AL_LEFT);
-  const char *tag = TAGLINES[(int)(T / 3.5f) % COUNT(TAGLINES)];
-  hud_text(F_H3, 290, 242, tag, C_HAZARD, 255, AL_LEFT);
-  /* alternate the how-to and the buttons, so a passerby learns both */
-  if (fmodf(T, 14.f) < 9.f) how_to(64, 292, 600);
-  else controls_card(64, 300, 460);
-  join_panel(916, 300, true);
-  if (fmodf(T, 1.2f) < 0.85f) {
-    hud_rect(70, 610, 600, 56, C_SHADOW, 255);
-    hud_rect(64, 604, 600, 56, C_HAZARD, 255);
-    hud_text(F_H2, 364, 610, "PRESS A OR SPACE TO PLAY", C_TAPE, 255, AL_CENTER);
+  float k = mark_k();
+  if (k < 1) title_idle(1 - k);
+  hud_logo(lerpi(150, 32, k), lerpi(210, 40, k), lerpi(180, 64, k), C_BONE);
+  if (k > 0.45f) hud_text_sh(F_H2, 108, 52, "DO-OCRACY", C_BONE, (int)(255 * clampf((k - 0.45f) / 0.55f, 0, 1)), AL_LEFT);
+  switch (M.screen) {
+    case SCR_TITLE: break;
+    case SCR_ATTRACT: attract_screen(); break;
+    case SCR_MAIN: menu_main(dt); break;
+    default: menu_unbuilt(); break;
   }
-  const char *tip = ATTRACT_TIPS[(int)(T / 3.0f) % COUNT(ATTRACT_TIPS)];
-  hud_rect(0, HUD_H - 40, HUD_W, 40, C_TAPE, 255);
-  hud_text(F_MONO, HUD_W / 2, HUD_H - 34, tip, C_ASH, 255, AL_CENTER);
 }
 
-static void lobby_overlay(void) {
-  how_to(16, 146, 470);
-  controls_card(16, 454, 400);
-  join_panel(1032, 146, false);
-  char msg[80];
-  int left = (int)ceilf(25 - G.t);
-  if (player_count() == 0) snprintf(msg, sizeof msg, "PRESS A OR SPACE TO JOIN");
-  else snprintf(msg, sizeof msg, "START OR ENTER: BEGIN (AUTO %d)", left < 0 ? 0 : left);
-  slot_bar(msg, C_HAZARD, player_count() ? "WALK AROUND. TRY THINGS. NOTHING COUNTS YET." : NULL, C_BONE, 255, 0);
+/* ── the lobby (6.8) ─────────────────────────────────────────────── */
+
+static float card_age[MAX_PLAYERS], ready_age[MAX_PLAYERS];
+static bool card_was[MAX_PLAYERS], ready_was[MAX_PLAYERS];
+static float gone_t[MAX_PLAYERS]; static int gone_x[MAX_PLAYERS], gone_w[MAX_PLAYERS]; static uint32_t gone_c[MAX_PLAYERS];
+static char gone_name[MAX_PLAYERS][14];
+
+static void card_frame(int x, int y, int w, int h, uint32_t band, int a) {
+  hud_rect(x + 6, y + 6, w, h, C_SHADOW, a);
+  hud_rect(x, y, w, h, C_SLAB, a);
+  hud_frame(x, y, w, h, 1, C_STEEL_HI, a);
+  hud_rect(x, y, w, 8, band, a);
+}
+
+/* one seat card: kind 0 a player, 1 a bot that night start will add, 2 the phone code, 3 empty */
+static void seat_card(int x, int y, int w, int h, int slot, int kind, int bot_arch, int num) {
+  bool big = w > 200;
+  char b[32];
+  if (kind == 0) {
+    const player_t *p = &P[slot];
+    float e = hud_ease_back(fminf(1, card_age[slot] / 0.25f));
+    y -= (int)(40 * (1 - e));
+    int a = (int)(255 * fminf(1, card_age[slot] / 0.12f));
+    card_frame(x, y, w, h, p->color, a);
+    if (p->ready) hud_frame(x, y, w, h, 3, C_LIVE, a);
+    snprintf(b, sizeof b, "P%d", num);
+    if (big) {
+      hud_glyph(x + 16, y + 20, seat_glyph(p->seat), 2, C_BONE, a);
+      hud_text(F_H3, x + 56, y + 22, b, p->color, a, AL_LEFT);
+      hud_clip(x, y, w - 8, h);
+      hud_text(F_MONO, x + 16, y + 58, p->name, C_BONE, a, AL_LEFT);
+      hud_clip_clear();
+    } else {
+      hud_glyph(x + 8, y + 16, seat_glyph(p->seat), 1, C_BONE, a);
+      hud_text(F_MONO_S, x + 30, y + 18, b, p->color, a, AL_LEFT);
+      hud_clip(x, y, w - 4, h);
+      hud_text(F_MONO_S, x + 8, y + 44, p->name, C_BONE, a, AL_LEFT);
+      hud_clip_clear();
+    }
+    int sy = y + 88;
+    if (p->ready) {
+      int s = ready_age[slot] < 0.1f ? 3 : 2;
+      int gs = big ? s : 1;
+      hud_glyph(x + 16 - (gs - 2) * 8, sy - 6 - (gs - 2) * 8, GL_CHECK, gs, C_LIVE, a);
+      hud_text(big ? F_MONO : F_MONO_S, x + 16 + 16 * (big ? 2 : 1) + 8, sy, "READY", C_LIVE, a, AL_LEFT);
+    } else {
+      snprintf(b, sizeof b, "PRESS %s", seat_cap(p->seat, 3));
+      hud_text(F_MONO_S, x + 16, sy + 4, b, C_ASH, a, AL_LEFT);
+    }
+    float hb = M.hold_b[slot];
+    if (hb > 0) {
+      hud_ring(x + w - 24, y + h - 20, 12, 3, hb, C_RUST, 255);
+      if (p->seat == M.owner && human_count() == 1) hud_text(F_MONO_S, x + w - 42, y + h - 28, "MENU", C_RUST, 255, AL_RIGHT);
+    }
+  } else if (kind == 1) {
+    card_frame(x, y, w, h, C_STEEL, 180);
+    hud_glyph(x + (big ? 16 : 8), y + (big ? 20 : 16), GL_BOT, big ? 2 : 1, C_ASH, 180);
+    hud_text(big ? F_H3 : F_MONO_S, x + (big ? 56 : 30), y + (big ? 22 : 18), game_bot_name(bot_arch), C_ASH, 180, AL_LEFT);
+    hud_text(F_MONO_S, x + 16, y + 92, "BOT", C_SMOKE, 180, AL_LEFT);
+  } else if (kind == 2) {
+    card_frame(x, y, w, h, C_STEEL, 255);
+    int q = big ? 96 : 72;
+    hud_qr(x + 12, y + 16, q, G.join_url);
+    if (big) {
+      hud_eyebrow(x + 120, y + 24, "PHONES", C_ASH, AL_LEFT);
+      hud_text(F_H2, x + 120, y + 44, G.room, C_HAZARD, 255, AL_LEFT);
+    }
+  } else {
+    card_frame(x, y, w, h, C_STEEL, 255);
+    int a = 150 + (int)(105 * (0.5f + 0.5f * sinf(T * 4.4f)));
+    int kx = x + 16 + hud_keycap(x + 16, y + 44, "A", C_HAZARD, C_TAPE) + 8;
+    if (big) hud_text(F_MONO, kx, y + 44, "TO JOIN", C_BONE, a, AL_LEFT);
+  }
+}
+
+static void lobby_cards(float dt) {
+  /* who is here: the owner first, then by slot */
+  int order[MAX_PLAYERS], np = 0;
+  for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active && !P[i].bot && P[i].seat == M.owner && M.owner >= 0) order[np++] = i;
+  for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active && !(np && order[0] == i)) order[np++] = i;
+  int bots[2] = { 0, 0 }, nb = 0;
+  if (human_count() == 1 && player_count() == 1 && G.want_bots) nb = game_mode_bots(&bots[0], &bots[1]);
+  int n = np + nb + 1;
+  bool big = n <= 4;
+  int cards = big ? 4 : 8, w = big ? 280 : 140, x0 = big ? 56 : 52, pitch = big ? 296 : 148, y = 580, h = 120;
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    bool on = P[i].active && !P[i].bot;
+    if (on && !card_was[i]) card_age[i] = 0;
+    if (on) card_age[i] += dt;
+    if (!on && card_was[i] && gone_t[i] <= 0) {
+      gone_t[i] = 0.3f; gone_c[i] = P[i].color; snprintf(gone_name[i], sizeof gone_name[i], "%s", P[i].name);
+    }
+    card_was[i] = on;
+    bool r = on && P[i].ready;
+    if (r && !ready_was[i]) ready_age[i] = 0;
+    ready_age[i] += dt;
+    ready_was[i] = r;
+  }
+  bool qr_done = false;
+  for (int c = 0; c < cards; c++) {
+    int x = x0 + c * pitch;
+    if (c < np) {
+      seat_card(x, y, w, h, order[c], 0, 0, order[c] + 1);
+      gone_x[order[c]] = x; gone_w[order[c]] = w;
+    } else if (c < np + nb) seat_card(x, y, w, h, -1, 1, bots[c - np], 0);
+    else if (!qr_done && phones_on()) { seat_card(x, y, w, h, -1, 2, 0, 0); qr_done = true; }
+    else seat_card(x, y, w, h, -1, 3, 0, 0);
+  }
+  /* a card that went home drops 20 px and fades */
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    if (gone_t[i] <= 0) continue;
+    gone_t[i] -= dt;
+    float f = clampf(gone_t[i] / 0.3f, 0, 1);
+    int gy = y + (int)(20 * (1 - f)), a = (int)(255 * f);
+    card_frame(gone_x[i], gy, gone_w[i], h, gone_c[i], a);
+    hud_text(F_MONO, gone_x[i] + 16, gy + 58, gone_name[i], C_ASH, a, AL_LEFT);
+  }
+}
+
+/* 3, 2, 1, GO: each digit drops 20 px and fades in over 0.2 s */
+static void countdown(void) {
+  const char *s = NULL;
+  float local = 0;
+  if (M.ready_t > 0 && M.ready_t < 3) { static const char *const D[3] = { "3", "2", "1" }; s = D[(int)M.ready_t]; local = fmodf(M.ready_t, 1); }
+  else if (M.ready_t >= 3 && G.wipe_t > 0) { s = "GO"; local = 0.6f - G.wipe_t; }
+  if (!s) return;
+  float e = hud_ease_out(fminf(1, local / 0.2f));
+  hud_text_sh(F_TITLE, 640, 220 + (int)(20 * e), s, C_HAZARD, (int)(255 * e), AL_CENTER);
+}
+
+/* the night start tape wipe: two bars close over 0.3 s and open over 0.3 s */
+static void start_wipe(void) {
+  if (G.wipe_t <= 0) return;
+  float t = 0.6f - G.wipe_t;
+  float f = t < 0.3f ? hud_ease_inout(t / 0.3f) : 1 - hud_ease_inout((t - 0.3f) / 0.3f);
+  int h = 24 + (int)(336 * f);
+  hud_rect(0, 0, HUD_W, h, C_TAPE, 255);
+  hud_tape(0, h - 24, HUD_W, 24, T * 30);
+  hud_rect(0, HUD_H - h, HUD_W, h, C_TAPE, 255);
+  hud_tape(0, HUD_H - h, HUD_W, 24, T * 30);
+}
+
+static void lobby_overlay(float dt) {
+  /* the lobby panel stands where the meters will be */
+  hud_panel(330, 6, 600, 56, C_SLAB, C_STEEL_HI);
+  hud_eyebrow(346, 12, "LOBBY", C_ASH, AL_LEFT);
+  int mode = G.mode >= 0 && G.mode < MODE_COUNT ? G.mode : 0;
+  hud_text(F_H3, 346, 26, MODE_LOBBY_NAMES[mode], C_BONE, 255, AL_LEFT);
+  int li = mode == MODE_CHAOS ? 0 : SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1;
+  hud_text(F_MONO_S, 914, 36, NIGHT_LENS[li].name, C_ASH, 255, AL_RIGHT);
+  if (phones_on()) join_strip(944, 6);
+  /* doors open in: a chip and a tape that shrinks from the right */
+  if (M.ready_t <= 0 && G.wipe_t <= 0) {
+    int left = (int)ceilf(M.lobby_t);
+    char b[32]; snprintf(b, sizeof b, "DOORS OPEN IN %d:%02d", left / 60, left % 60);
+    hud_rect(16, 72, 180, 24, C_CHAR, 255);
+    hud_text(F_MONO_S, 26, 76, b, C_BONE, 255, AL_LEFT);
+    static float phase;
+    if (!M.tape_held) phase += dt * 30;
+    hud_tape(196, 72, (int)(1068 * M.lobby_t / 25), 24, phase);
+  }
+  /* the owner's buttons */
+  int x = 16;
+  x = footer_hint(x, 108, seat_cap(M.owner, 0), "TRY THINGS");
+  x = footer_hint(x, 108, seat_cap(M.owner, 1), "DROP");
+  x = footer_hint(x, 108, seat_cap(M.owner, 2), "PROPOSE");
+  footer_hint(x, 108, seat_cap(M.owner, 3), "READY");
+  if (M.status_t > 0) hud_text_sh(F_MONO, 640, 146, M.status, C_ASH, M.status_t < 0.3f ? (int)(255 * M.status_t / 0.3f) : 255, AL_CENTER);
+  lobby_cards(dt);
+  countdown();
 }
 
 static void results_screen(void) {
@@ -770,25 +1108,35 @@ void draw_hud(float dt) {
   if (!vignette) bake_vignette();
   memcpy(hud_px, vignette, HUD_W * HUD_H * 4);
   if (G.phase == PH_TITLE || G.attract) {
+    nplaced = 0;
+    reserve(0, 0, HUD_W, 104);
+    reserve(0, HUD_H - 40, HUD_W, 40);
+    if (M.screen == SCR_ATTRACT) attract_overlay();
     fx_draw(dt);
-    title_screen();
+    front_end(dt);
+    fx2_draw(dt);
     return;
   }
-  if (G.phase == PH_RESULTS) { fx_draw(dt); results_screen(); return; }
+  if (G.phase == PH_RESULTS) { fx_draw(dt); results_screen(); fx2_draw(dt); return; }
   nplaced = 0;
   reserve(0, 0, HUD_W, 104);                 /* the top rows */
-  reserve(0, HUD_H - 86, HUD_W, 86);         /* the player cards */
+  if (G.phase == PH_NIGHT) reserve(0, HUD_H - 86, HUD_W, 86);   /* the player cards */
+  else reserve(0, 570, HUD_W, 150);          /* the lobby seat cards */
+  reserve(960, 104, 304, 52);                /* the toasts */
   goal_guides();
   station_labels();
   floor_tags();
   npcs_overlay();
   fx_draw(dt);
   top_bar();
-  if (G.phase == PH_LOBBY) lobby_overlay();
+  if (G.phase == PH_LOBBY) lobby_overlay(dt);
   else join_strip(944, 6);
   if (!danger()) { ticker_band(); if (G.ticker_t <= 0) coach(); }
-  player_cards();
-  toasts(16, HUD_H - 100);
+  if (G.phase == PH_NIGHT) player_cards();
+  toasts(1264, 108);
   /* last, so nothing on screen can ever hide your own name, prompt or progress */
   players_overlay();
+  if (G.phase == PH_NIGHT) countdown();
+  start_wipe();
+  fx2_draw(dt);
 }
