@@ -25,6 +25,57 @@ enum { END_NONE, END_SURVIVED, END_FIRE, END_BURNOUT };
 #define IN_X 4
 #define IN_START 8
 
+/* ── the front end: seats, settings, menus (FINAL-frontend.md 3, 4, 8.1) ── */
+#define SEAT_PADS 4
+#define SEAT_KBS 2
+#define SEAT_PHONES MAX_PLAYERS
+#define SEAT_COUNT (SEAT_PADS + SEAT_KBS + SEAT_PHONES)   /* 14 */
+#define SEAT_PAD(i)   (i)          /* 0..3 */
+#define SEAT_KB(k)    (4 + (k))    /* 4, 5 */
+#define SEAT_PHONE(i) (6 + (i))    /* 6..13 */
+
+enum { SCR_TITLE, SCR_ATTRACT, SCR_MAIN, SCR_MODES, SCR_SETTINGS, SCR_FLASH, SCR_CREDITS, SCR_NONE };
+enum { TO_MAIN, TO_LOBBY };            /* M.settings_then: where DONE goes */
+enum { MODE_SOLO, MODE_COOP, MODE_VERSUS, MODE_CHAOS, MODE_CUSTOM, MODE_COUNT };
+enum { CHAOS_CALM, CHAOS_NORMAL, CHAOS_CHAOS };
+enum { HELP_OFF, HELP_FIRST, HELP_ALWAYS };
+enum { NAV_UP = 1, NAV_DOWN = 2, NAV_LEFT = 4, NAV_RIGHT = 8, NAV_A = 16, NAV_B = 32, NAV_START = 64 };
+
+typedef struct {
+  uint8_t mode;        /* MODE_* */
+  uint8_t night_len;   /* index into NIGHT_LENS: 0 SHORT 120, 1 NORMAL 180, 2 LONG 300, 3 MARATHON 600 */
+  uint8_t bots;        /* 1 on: fill when exactly one human is seated */
+  uint8_t chaos;       /* CHAOS_* */
+  uint8_t phones;      /* 1 on */
+  uint8_t music, sfx;  /* 0..10 */
+  uint8_t layout;      /* the ROOM row: index into LEVELS[] */
+  uint8_t help;        /* HELP_* */
+  uint8_t pad_[7];
+} settings_t;          /* 16 bytes */
+extern settings_t SET;  /* defined in game.c, written by main.c */
+
+typedef struct {
+  int screen, prev_screen;
+  int owner;            /* seat id or -1 */
+  int row, col;         /* cursor */
+  float cur_y, snap_t;  /* eased cursor and the overshoot clock */
+  float lift[MODE_COUNT];
+  float val_slide; int val_dir;   /* settings and PLAY value nudge */
+  float t;              /* seconds in this screen */
+  float trans;          /* -1..0 outgoing, 0..1 incoming, 1 idle */
+  float idle;           /* seconds since the owner's last nav */
+  float title_idle;     /* seconds with no input at all on SCR_TITLE */
+  int settings_then;    /* TO_MAIN or TO_LOBBY */
+  int flash_step; float flash_t, flash_wipe; bool flash_fired; int flash_return;
+  float deny_t; char deny[48];
+  int pause_row; int pauser;      /* seat */
+  float cam_blend;      /* 0 orbit, 1 play */
+  bool kb_seen;
+  int pending_count;    /* mirrored from the seats each frame for draw.c */
+  int pending_seat[SEAT_COUNT];   /* seat ids in order, for the AT THE DOOR chips */
+} menu_t;
+extern menu_t M;       /* defined in game.c beside G, driven by main.c, drawn by draw.c */
+
 enum {
   IT_NONE,
   /* carried */
@@ -122,6 +173,8 @@ typedef struct {
   t3_object *obj;
   t3_mesh *body, *carry_marker;
   float status_t;
+  bool ready;          /* lobby */
+  int seat;            /* seat id, for glyphs on cards and results; -1 for bots */
 } player_t;
 
 typedef struct {
@@ -163,6 +216,20 @@ typedef struct {
   float sewing, door_dust, labels_t, purge_t, lights_t, sleeper_cool, next_storage, next_book, next_box, gust;
   int tour_pending;
   bool lights_on, bike_toast, sew_toast, forge_toast, read_toast;
+  /* the front end: resolved settings and group state */
+  int mode;            /* resolved from SET at lobby open */
+  bool want_bots;      /* resolved: fill when one human */
+  float pace;          /* 1.4, 1.0, 0.65: multiplies the four spawn refills */
+  float badmul;        /* 0.6, 1, 2: multiplies bad event weights */
+  float jam;           /* printer jam chance, 0.3 or 0.6 */
+  bool paused;
+  bool flash_seen;
+  int group_nights;
+  int end_variant;
+  int coach_st;        /* station the coach points at, -1 none */
+  int team_karma;      /* co-op, kept current in karma() */
+  int newbies_seen, newbies_greeted;
+  float wipe_t;        /* night start tape wipe, 0.6 down to 0 */
 } game_t;
 
 extern game_t G;
@@ -281,6 +348,10 @@ void game_remove_bots(void);
 int  human_count(void);
 void game_reset_world(void);
 void game_toast(const char *msg, uint32_t color);
+void game_begin_lobby(void);            /* leave attract or the title for the lobby; resolves SET */
+void game_apply_settings(void);         /* SET and the mode into G.night_len, pace, badmul, jam, want_bots */
+void game_quit_to_title(void);
+int  game_mode_bots(int *a, int *b);    /* which bots the current mode adds for one human; returns count */
 const char *item_name(const item_t *it);
 
 /* world.c: the 3D side */

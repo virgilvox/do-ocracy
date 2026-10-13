@@ -177,4 +177,16 @@ static const char *const AWARD_BIKESHED = "ARGUED ABOUT THE COLOUR. THE SHED IS 
 static const char *const AWARD_WITNESS  = "CLEANED THE BATHROOM %d TIMES. NO WITNESSES.";
 static const char *const AWARD_GREASE   = "FIXED %d FLATS. THIRD FRIDAY ENERGY.";
 
+/* Front end settings tables (FINAL-frontend.md 8.6). SET indexes these. */
+static const struct { const char *name; float secs; } NIGHT_LENS[] = {
+  { "SHORT 2:00", 120 }, { "NORMAL 3:00", 180 }, { "LONG 5:00", 300 }, { "MARATHON 10:00", 600 } };
+static const char *const CHAOS_NAMES[] = { "CALM", "NORMAL", "CHAOS" };
+static const float PACE[] = { 1.4f, 1.0f, 0.65f };      /* multiplies the four spawn refills */
+static const float BADMUL[] = { 0.6f, 1.0f, 2.0f };    /* multiplies the bad event weights */
+static const char *const HELP_NAMES[] = { "OFF", "FIRST NIGHT", "ALWAYS" };
+static const char *const ONOFF[] = { "OFF", "ON" };
+static const char *const ROOM_NAMES[] = { "108 W MAIN" };   /* until the ROOM row reads LEVELS[].name */
+/* how many end lines each ending has (END_NONE, END_SURVIVED, END_FIRE, END_BURNOUT) */
+static const int END_VARIANT_COUNT[4] = { 0, 2, 3, 3 };
+
 #endif

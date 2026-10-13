@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <ctype.h>
+#include <stddef.h>
 
 #define W 1280
 #define H 720
@@ -30,9 +31,78 @@ static t3_scene *scene, *hud_scene;
 static t3_camera *hud_cam;
 static t3_texture *hud_tex;
 
-typedef struct { int slot; uint32_t btn; float x, y; } phone_t;
-static phone_t phones[MAX_PLAYERS];
+/* A seat is an input source that may or may not be a player yet: four pads,
+ * two keyboard halves, one per phone (FINAL-frontend.md 3.1). */
+typedef struct {
+  bool present;        /* pad: always true; kb: a key was ever seen this boot; phone: registered */
+  uint32_t btn, prev;  /* IN_A IN_B IN_X IN_START */
+  float sx, sy;        /* -1..1, sy positive is down on screen (toward +z) */
+  int dir, last_dir;   /* NAV_* direction currently held, for repeat */
+  float repeat;        /* seconds until the next repeat event */
+  int nav;             /* this frame's nav events (nav_read), for the menus */
+  int slot;            /* player slot or -1 */
+  char name[14];       /* "PAD 1".."PAD 4", "WASD", "ARROWS", or the phone's name */
+  char pid[25];        /* phones only */
+  bool pending;        /* pressed A on a menu, or a phone said J while the front end was up */
+  bool denied;         /* the deny joke has fired for this seat */
+  float hold_b;        /* lobby: seconds B has been held */
+} seat_t;
+static seat_t seats[SEAT_COUNT];
 static float status_clock;
+
+/* the save region: settings and records, persisted by the host after the frame */
+#define SAVE_MAGIC 0x434f4f44u   /* 'DOOC' */
+#define SAVE_VERSION 1
+typedef struct {
+  uint32_t magic, version, crc;   /* crc32 of everything after crc */
+  settings_t set;
+  uint32_t nights_played;
+  int32_t best_karma;  char best_karma_name[14];
+  int32_t best_clout;  char best_clout_name[14];
+  int32_t best_team;               /* co-op team karma */
+  uint8_t reserved[32];
+} save_t;
+static save_t SAVE;              /* static so the address is stable */
+
+static uint32_t crc32(const void *p, size_t n) {
+  const uint8_t *b = p;
+  uint32_t c = 0xffffffffu;
+  for (size_t i = 0; i < n; i++) {
+    c ^= b[i];
+    for (int k = 0; k < 8; k++) c = (c >> 1) ^ (0xedb88320u & (0u - (c & 1)));
+  }
+  return ~c;
+}
+
+#define SAVE_BODY(s) ((const uint8_t *)(s) + offsetof(save_t, set))
+#define SAVE_BODY_N (sizeof(save_t) - offsetof(save_t, set))
+
+/* recompute the crc and copy SET in; the host writes the region out after the frame */
+static void save_commit(void) {
+  SAVE.magic = SAVE_MAGIC; SAVE.version = SAVE_VERSION;
+  SAVE.set = SET;
+  SAVE.crc = crc32(SAVE_BODY(&SAVE), SAVE_BODY_N);
+}
+
+static void settings_defaults(settings_t *s) {
+  memset(s, 0, sizeof *s);
+  s->mode = MODE_SOLO; s->night_len = 1; s->bots = 1; s->chaos = CHAOS_NORMAL; s->phones = 1;
+  s->music = 7; s->sfx = 8; s->layout = 0; s->help = HELP_FIRST;
+}
+
+/* magic, version and crc; anything else (a never saved cart is all zero) gets the defaults */
+static void save_load(void) {
+  bool ok = SAVE.magic == SAVE_MAGIC && SAVE.version == SAVE_VERSION && SAVE.crc == crc32(SAVE_BODY(&SAVE), SAVE_BODY_N);
+  if (ok) {
+    const settings_t *s = &SAVE.set;
+    ok = s->mode < MODE_COUNT && s->night_len < 4 && s->bots <= 1 && s->chaos <= CHAOS_CHAOS && s->phones <= 1 &&
+         s->music <= 10 && s->sfx <= 10 && s->layout < LEVEL_COUNT && s->help <= HELP_ALWAYS;
+  }
+  if (ok) { SET = SAVE.set; return; }
+  memset(&SAVE, 0, sizeof SAVE);
+  settings_defaults(&SET);
+  save_commit();
+}
 
 __attribute__((export_name("wc_get_info")))
 wc_info_t *wc_get_info(void) {
@@ -46,6 +116,8 @@ wc_info_t *wc_get_info(void) {
   info.time_ptr = (uint32_t)(uintptr_t)&tm;
   info.host_info_ptr = (uint32_t)(uintptr_t)&host_info;
   info.keys_ptr = (uint32_t)(uintptr_t)keys;
+  info.save_ptr = (uint32_t)(uintptr_t)&SAVE;
+  info.save_size = sizeof SAVE;
   info.flags = WC_FLAG_AUDIO_F32 | WC_FLAG_NET_PEER | WC_FLAG_KEYBOARD;
   info.gpu_api = 1;
   return &info;
@@ -109,6 +181,7 @@ void wc_init(void) {
   t3_renderer_set_clear_color(R, C_CHAR, 1);
 
   hud_init();
+  save_load();
   game_init();
   load_config();
 
@@ -130,7 +203,14 @@ void wc_init(void) {
   t3_object_add(&hud_scene->base, quad);
   t3_release(quad); t3_release(hm);
 
-  for (int i = 0; i < MAX_PLAYERS; i++) phones[i].slot = -1;
+  for (int i = 0; i < SEAT_COUNT; i++) seats[i].slot = -1;
+  for (int i = 0; i < SEAT_PADS; i++) {
+    seats[SEAT_PAD(i)].present = true;
+    snprintf(seats[SEAT_PAD(i)].name, sizeof seats[0].name, "PAD %d", i + 1);
+  }
+  snprintf(seats[SEAT_KB(0)].name, sizeof seats[0].name, "WASD");
+  snprintf(seats[SEAT_KB(1)].name, sizeof seats[0].name, "ARROWS");
+  M.owner = -1; M.screen = SCR_TITLE; M.prev_screen = SCR_TITLE;
   net_init(G.relay, G.room);
   audio_music(1);
   WC_LOG("do-ocracy: clocked in");
@@ -138,15 +218,8 @@ void wc_init(void) {
 
 /* ── input ───────────────────────────────────────────────────────── */
 
-static int pad_slot[4] = { -1, -1, -1, -1 };
-static float pad_gone[4];
-static uint32_t pad_prev[4];
-
 #define KEY(k) ((keys[(k) >> 3] >> ((k) & 7)) & 1)
 #define LETTER(c) (0x04 + ((c) - 'a'))
-static int kb_slot[2] = { -1, -1 };
-static uint32_t kb_prev[2];
-
 
 static uint32_t pad_buttons(const wc_pad_t *p, float *sx, float *sy) {
   uint32_t b = 0;
@@ -165,45 +238,33 @@ static uint32_t pad_buttons(const wc_pad_t *p, float *sx, float *sy) {
   return b;
 }
 
-static bool any_pressed;   /* someone pressed A or START this frame */
-static bool start_pressed;
-
-static void seat(int *slot, uint32_t b, uint32_t prev, float x, float y, int pad, const char *name) {
-  bool edge_a = (b & IN_A) && !(prev & IN_A), edge_s = (b & IN_START) && !(prev & IN_START);
-  if (edge_a || edge_s) any_pressed = true;
-  if (*slot >= 0 && !P[*slot].active) *slot = -1;
-  if (*slot >= 0 && edge_s) start_pressed = true;   /* the press that clocks you in does not also start the night */
-  if (*slot < 0) {
-    if ((edge_a || edge_s) && G.phase != PH_RESULTS) {
-      *slot = game_add_player(false, pad, NULL, name);
-      if (*slot >= 0) P[*slot].prev = b;
-    }
-    return;
-  }
-  game_player_input(*slot, b, x, y);
+/* menu events for one seat this frame: one direction at a time with repeat,
+ * and A, B, START as edges (FINAL-frontend.md 3.3) */
+static int nav_read(seat_t *s, float dt) {
+  int nav = 0, dir = 0;
+  if (fabsf(s->sy) >= 0.5f) dir = s->sy < 0 ? NAV_UP : NAV_DOWN;
+  else if (fabsf(s->sx) >= 0.5f) dir = s->sx < 0 ? NAV_LEFT : NAV_RIGHT;
+  if (!dir) s->dir = 0;
+  else if (dir != s->dir) { s->dir = s->last_dir = dir; s->repeat = 0.28f; nav |= dir; }
+  else if ((s->repeat -= dt) <= 0) { s->repeat = 0.11f; nav |= dir; }
+  uint32_t edge = s->btn & ~s->prev;
+  if (edge & IN_A) nav |= NAV_A;
+  if (edge & IN_B) nav |= NAV_B;
+  if (edge & IN_START) nav |= NAV_START;
+  return nav;
 }
 
-static void read_input(float dt) {
-  any_pressed = start_pressed = false;
-  for (int i = 0; i < 4; i++) {
-    wc_pad_t *p = &pads[i];
-    float x = 0, y = 0;
-    uint32_t b = p->connected ? pad_buttons(p, &x, &y) : 0;
-    if (!p->connected && pad_slot[i] >= 0) {
-      game_player_input(pad_slot[i], 0, 0, 0);   /* let go of everything while it is unplugged */
-      pad_gone[i] += dt;
-      if (pad_gone[i] > 3) { game_remove_player(pad_slot[i]); pad_slot[i] = -1; }
-      continue;
-    }
-    pad_gone[i] = 0;
-    char name[16];
-    snprintf(name, sizeof name, "PAD %d", i + 1);
-    seat(&pad_slot[i], b, pad_prev[i], x, y, i, name);
-    pad_prev[i] = b;
+/* fill every seat's buttons and stick: all four pads with no connected gate
+ * (under RetroArch only pad 0 reports connected; an unplugged pad reads zero),
+ * the two keyboard halves (browser and Node hosts), and the phones, whose
+ * btn and stick game_on_phone writes */
+static void seats_poll(float dt) {
+  for (int i = 0; i < SEAT_PADS; i++) {
+    seat_t *s = &seats[SEAT_PAD(i)];
+    s->btn = pad_buttons(&pads[i], &s->sx, &s->sy);
   }
-  /* two keyboard seats, read as raw keys (browser and Node hosts; under
-   * RetroArch the keyboard arrives as RetroPad 1 instead) */
-  for (int k = 0; k < 2; k++) {
+  for (int k = 0; k < SEAT_KBS; k++) {
+    seat_t *s = &seats[SEAT_KB(k)];
     uint32_t b = 0;
     float x = 0, y = 0;
     if (k == 0) {
@@ -221,49 +282,84 @@ static void read_input(float dt) {
       y = (float)(KEY(0x51) - KEY(0x52));               /* down, up */
     }
     if (x && y) { x *= 0.7071f; y *= 0.7071f; }
-    char name[16];
-    snprintf(name, sizeof name, k == 0 ? "WASD" : "ARROWS");
-    int before = kb_slot[k];
-    seat(&kb_slot[k], b, kb_prev[k], x, y, -1, name);
-    if (kb_slot[k] >= 0 && before < 0) P[kb_slot[k]].kb = k;
-    kb_prev[k] = b;
+    s->btn = b; s->sx = x; s->sy = y;
+    if (b || x || y) { s->present = true; M.kb_seen = true; }
+  }
+  for (int i = 0; i < SEAT_COUNT; i++) seats[i].nav = seats[i].present ? nav_read(&seats[i], dt) : 0;
+}
+
+static bool any_pressed;   /* someone pressed A or START this frame */
+static bool start_pressed;
+
+/* one pad or keyboard seat: an A or START edge on an unseated seat clocks
+ * in; a seated seat drives its player */
+static void seat_step(seat_t *s, int id, int pad) {
+  uint32_t b = s->btn, prev = s->prev;
+  bool edge_a = (b & IN_A) && !(prev & IN_A), edge_s = (b & IN_START) && !(prev & IN_START);
+  if (edge_a || edge_s) any_pressed = true;
+  if (s->slot >= 0 && !P[s->slot].active) s->slot = -1;
+  if (s->slot >= 0 && edge_s) start_pressed = true;   /* the press that clocks you in does not also start the night */
+  if (s->slot < 0) {
+    if ((edge_a || edge_s) && G.phase != PH_RESULTS) {
+      s->slot = game_add_player(false, pad, NULL, s->name);
+      if (s->slot >= 0) { P[s->slot].prev = b; P[s->slot].seat = id; }
+    }
+    return;
+  }
+  game_player_input(s->slot, b, s->sx, s->sy);
+}
+
+static void went_home(seat_t *s) {
+  char m[48]; snprintf(m, sizeof m, "%s WENT HOME.", P[s->slot].name); game_toast(m, C_ASH);
+  game_remove_player(s->slot); s->slot = -1;
+}
+
+/* joins, play input and the idle rule. The menus that gate joining to the
+ * lobby arrive with the front end; until then a press joins in any phase but
+ * the results, exactly as before */
+static void seats_join(float dt) {
+  any_pressed = start_pressed = false;
+  for (int i = 0; i < SEAT_PADS; i++) seat_step(&seats[SEAT_PAD(i)], SEAT_PAD(i), i);
+  for (int k = 0; k < SEAT_KBS; k++) {
+    seat_t *s = &seats[SEAT_KB(k)];
+    int before = s->slot;
+    seat_step(s, SEAT_KB(k), -1);
+    if (s->slot >= 0 && before < 0) P[s->slot].kb = k;
   }
   /* someone who clocked in on a pad or the keyboard and walked away goes home
-   * after a while, so the cabinet can fall back to its demo */
-  if (G.phase == PH_LOBBY || G.phase == PH_NIGHT) {
-    for (int i = 0; i < 4; i++) if (pad_slot[i] >= 0 && P[pad_slot[i]].idle > 75) {
-      char m[48]; snprintf(m, sizeof m, "%s WENT HOME.", P[pad_slot[i]].name); game_toast(m, C_ASH);
-      game_remove_player(pad_slot[i]); pad_slot[i] = -1;
-    }
-    for (int k = 0; k < 2; k++) if (kb_slot[k] >= 0 && P[kb_slot[k]].idle > 75) {
-      char m[48]; snprintf(m, sizeof m, "%s WENT HOME.", P[kb_slot[k]].name); game_toast(m, C_ASH);
-      game_remove_player(kb_slot[k]); kb_slot[k] = -1;
-    }
-  }
+   * after a while, so the cabinet can fall back to its demo; this also covers
+   * a pad that was unplugged */
+  if (G.phase == PH_LOBBY || G.phase == PH_NIGHT)
+    for (int i = 0; i < SEAT_PADS + SEAT_KBS; i++) if (seats[i].slot >= 0 && P[seats[i].slot].idle > 75) went_home(&seats[i]);
   /* phones */
-  for (int i = 0; i < MAX_PLAYERS; i++) {
-    phone_t *ph = &phones[i];
+  for (int i = 0; i < SEAT_PHONES; i++) {
+    seat_t *ph = &seats[SEAT_PHONE(i)];
     if (ph->slot < 0) continue;
     player_t *p = &P[ph->slot];
-    if (!p->active || !p->phone) { ph->slot = -1; continue; }
+    if (!p->active || !p->phone) { ph->slot = -1; ph->present = false; continue; }
     if (net_online()) p->seen += dt;   /* a relay outage is not the phone's fault */
     if (p->seen > 12) {
       char msg[64];
       snprintf(msg, sizeof msg, "%s LOST SIGNAL.", p->name);
       game_toast(msg, C_ASH);
       game_remove_player(ph->slot);
-      ph->slot = -1;
+      ph->slot = -1; ph->present = false;
       continue;
     }
     uint32_t edge = ph->btn & ~p->prev;
     if (edge & (IN_A | IN_START)) any_pressed = true;
     if (edge & IN_START) start_pressed = true;
-    game_player_input(ph->slot, ph->btn, ph->x, ph->y);
+    game_player_input(ph->slot, ph->btn, ph->sx, ph->sy);
   }
+  for (int i = 0; i < SEAT_COUNT; i++) seats[i].prev = seats[i].btn;
 }
 
+/* the phone seat (0..SEAT_PHONES-1) seated with this id, or -1 */
 static int phone_slot(const char *pid) {
-  for (int i = 0; i < MAX_PLAYERS; i++) if (phones[i].slot >= 0 && !strcmp(P[phones[i].slot].pid, pid)) return i;
+  for (int i = 0; i < SEAT_PHONES; i++) {
+    const seat_t *s = &seats[SEAT_PHONE(i)];
+    if (s->slot >= 0 && !strcmp(P[s->slot].pid, pid)) return i;
+  }
   return -1;
 }
 
@@ -284,26 +380,34 @@ void game_on_phone(const char *pid, const char *msg) {
       if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' || c == '.' || c == '\'' || c == '_') name[n++] = (char)c;
     }
     name[n] = 0;
-    if (k >= 0) { P[phones[k].slot].seen = 0; welcome(phones[k].slot); return; }
+    if (k >= 0) { P[seats[SEAT_PHONE(k)].slot].seen = 0; welcome(seats[SEAT_PHONE(k)].slot); return; }
     if (G.phase == PH_RESULTS) { net_send(pid, "H"); return; }   /* hold on: next round */
     int slot = game_add_player(true, -1, pid, n ? name : NULL);
     if (slot < 0) { net_send(pid, "F"); return; }
-    for (int i = 0; i < MAX_PLAYERS; i++) if (phones[i].slot < 0) { phones[i] = (phone_t){ slot, 0, 0, 0 }; break; }
+    for (int i = 0; i < SEAT_PHONES; i++) {
+      seat_t *s = &seats[SEAT_PHONE(i)];
+      if (s->slot >= 0) continue;
+      *s = (seat_t){ .present = true, .slot = slot };
+      snprintf(s->pid, sizeof s->pid, "%s", pid);
+      snprintf(s->name, sizeof s->name, "%s", P[slot].name);
+      P[slot].seat = SEAT_PHONE(i);
+      break;
+    }
     welcome(slot);
   } else if (msg[0] == 'I') {
     if (k < 0) { net_send(pid, "R"); return; }   /* the cart restarted: please rejoin */
     int b = 0, x = 0, y = 0;
     sscanf(msg + 1, "%d,%d,%d", &b, &x, &y);
-    phone_t *ph = &phones[k];
+    seat_t *ph = &seats[SEAT_PHONE(k)];
     ph->btn = (uint32_t)b & 15;
-    ph->x = x / 100.f; ph->y = y / 100.f;
-    if (ph->x > 1) ph->x = 1;
-    if (ph->x < -1) ph->x = -1;
-    if (ph->y > 1) ph->y = 1;
-    if (ph->y < -1) ph->y = -1;
+    ph->sx = x / 100.f; ph->sy = y / 100.f;
+    if (ph->sx > 1) ph->sx = 1;
+    if (ph->sx < -1) ph->sx = -1;
+    if (ph->sy > 1) ph->sy = 1;
+    if (ph->sy < -1) ph->sy = -1;
     P[ph->slot].seen = 0;
   } else if (msg[0] == 'L') {
-    if (k >= 0) { game_remove_player(phones[k].slot); phones[k].slot = -1; }
+    if (k >= 0) { seat_t *s = &seats[SEAT_PHONE(k)]; game_remove_player(s->slot); s->slot = -1; s->present = false; }
   }
 }
 
@@ -329,9 +433,9 @@ static void phone_status(float dt) {
   int left = G.phase == PH_NIGHT ? (int)(G.night_len - G.t) : 0;
   snprintf(m, sizeof m, "P%d|%d|%d|%d", G.phase, left, (int)G.clutter, (int)G.vibe);
   net_send(NULL, m);
-  for (int i = 0; i < MAX_PLAYERS; i++) {
-    if (phones[i].slot < 0) continue;
-    player_t *p = &P[phones[i].slot];
+  for (int i = 0; i < SEAT_PHONES; i++) {
+    if (seats[SEAT_PHONE(i)].slot < 0) continue;
+    player_t *p = &P[seats[SEAT_PHONE(i)].slot];
     snprintf(m, sizeof m, "S%d|%d|%s|%s", p->clout, p->karma, p->hold >= 0 ? item_name(&I[p->hold]) : "", p->prompt);
     net_send(p->pid, m);
   }
@@ -391,9 +495,10 @@ void wc_render(void) {
   if (dt > 0.05f) dt = 0.05f;
   if (dt <= 0) dt = 1.f / 60;
 
-  read_input(dt);
+  seats_poll(dt);
+  seats_join(dt);
   net_update(dt);
-  game_update(dt);
+  if (!G.paused) game_update(dt);
   flow(dt);
   phone_status(dt);
   world_sync(dt);

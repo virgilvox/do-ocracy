@@ -10,6 +10,8 @@
 #include <stdlib.h>
 
 game_t G;
+settings_t SET;   /* the saved settings; main.c loads and writes them */
+menu_t M;         /* the front end state; main.c drives it, draw.c draws it */
 player_t P[MAX_PLAYERS];
 item_t I[MAX_ITEMS];
 npc_t N[MAX_NPCS];
@@ -325,9 +327,9 @@ static bool nav_plan(float x, float z, float tx, float tz, float *wx, float *wz)
 
 /* ── players ─────────────────────────────────────────────────────── */
 
-int game_add_player(bool phone, int pad, const char *pid, const char *name) {
-  if (G.attract && !adding_bot) {
-    /* a human walked up to the cabinet: the demo is over */
+/* a human walked up to the cabinet (or PLAY was chosen): the demo is over */
+void game_begin_lobby(void) {
+  if (G.attract) {
     game_remove_bots();
     clear_world();
     G.attract = false;
@@ -335,13 +337,56 @@ int game_add_player(bool phone, int pad, const char *pid, const char *name) {
     calm_meters();
     for (int i = 0; i < TOASTS; i++) toast_t[i] = 0;
     audio_music(1);
+  } else if (G.phase == PH_TITLE) { G.phase = PH_LOBBY; G.t = 0; }
+  for (int i = 0; i < MAX_PLAYERS; i++) P[i].ready = false;
+  G.mode = SET.mode;
+  game_apply_settings();
+}
+
+/* settings into the sim; SET itself is never written here */
+void game_apply_settings(void) {
+  int chaos = SET.chaos <= CHAOS_CHAOS ? SET.chaos : CHAOS_NORMAL;
+  int len = SET.night_len < COUNT(NIGHT_LENS) ? SET.night_len : 1;
+  /* NORMAL is the level's own length (config.json night_seconds scales the classic night) */
+  G.night_len = len == 1 ? L->night.len : NIGHT_LENS[len].secs;
+  G.pace = PACE[chaos]; G.badmul = BADMUL[chaos]; G.jam = 0.3f; G.want_bots = SET.bots != 0;
+  switch (G.mode) {
+    case MODE_SOLO: G.want_bots = true; break;
+    case MODE_CHAOS: G.night_len = 120; G.pace = 0.65f; G.badmul = 2; G.jam = 0.6f; G.want_bots = true; break;
+    default: break;   /* CO-OP, VERSUS and CUSTOM take SET as it is */
   }
+}
+
+/* the attract night ignores the settings: it is the level as written */
+static void default_settings(void) {
+  G.night_len = L->night.len; G.pace = 1; G.badmul = 1; G.jam = 0.3f; G.want_bots = true;
+}
+
+int game_mode_bots(int *a, int *b) {
+  if (G.mode == MODE_VERSUS) { *a = BOT_BUILDER; *b = BOT_FOUNDER; }
+  else { *a = L->night.solo_bots[0]; *b = L->night.solo_bots[1]; }
+  return 2;
+}
+
+/* drop everyone and everything and go back to the title */
+void game_quit_to_title(void) {
+  for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active) game_remove_player(i);
+  clear_world();
+  calm_meters();
+  G.attract = false; G.paused = false;
+  G.phase = PH_TITLE; G.t = 0; G.end = END_NONE;
+  for (int i = 0; i < TOASTS; i++) toast_t[i] = 0;
+  audio_music(1);
+}
+
+int game_add_player(bool phone, int pad, const char *pid, const char *name) {
+  if (G.attract && !adding_bot) game_begin_lobby();
   int slot = -1;
   for (int i = 0; i < MAX_PLAYERS; i++) if (!P[i].active) { slot = i; break; }
   if (slot < 0) return -1;
   player_t *p = &P[slot];
   memset(p, 0, sizeof *p);
-  p->active = true; p->phone = phone; p->pad = pad; p->hold = -1; p->kb = -1;
+  p->active = true; p->phone = phone; p->pad = pad; p->hold = -1; p->kb = -1; p->seat = -1;
   snprintf(p->pid, sizeof p->pid, "%s", pid ? pid : "");
   if (name && *name) snprintf(p->name, sizeof p->name, "%s", name);
   else snprintf(p->name, sizeof p->name, "PLAYER %d", slot + 1);
@@ -356,7 +401,7 @@ int game_add_player(bool phone, int pad, const char *pid, const char *name) {
     audio_play(SFX_JOIN);
     fx_burst(FX_JOIN, p->x, 1.0f, p->z, p->color);
   }
-  if (G.phase == PH_TITLE) { G.phase = PH_LOBBY; G.t = 0; }
+  if (G.phase == PH_TITLE) { G.phase = PH_LOBBY; G.t = 0; G.mode = SET.mode; }
   return slot;
 }
 
@@ -468,6 +513,7 @@ static int make_project(player_t *p, int kind) {
 
 static void karma(player_t *p, int v) {
   p->karma += v; p->tasks++;
+  G.team_karma += v;
   fx_burst(FX_KARMA, p->x, 1.6f, p->z, C_LIVE);
   pop(p, C_INK_OK, "+%d KARMA", v);
   audio_play(SFX_KARMA);
@@ -533,7 +579,7 @@ static void act(player_t *p, int kind, int ref) {
       break;
     case W_PRINT:
       s->state = S_BUSY; s->timer = 14;
-      s->count = frnd() < 0.3f ? 1 : 0;      /* this one is going to fail */
+      s->count = frnd() < G.jam ? 1 : 0;      /* this one is going to fail */
       audio_play(SFX_TICK);
       break;
     case W_TAKE:
@@ -583,7 +629,7 @@ static void act(player_t *p, int kind, int ref) {
     case W_GREET: {
       npc_t *n = &N[ref];
       n->state = 2; n->life = L->night.member_life; n->target = -1;
-      p->greeted++;
+      p->greeted++; G.newbies_greeted++;
       karma(p, L->night.greet_karma);
       G.vibe = fminf(100, G.vibe + L->night.greet_vibe);
       game_toast(PICK(NEWBIE_JOINS), C_INK_OK);
@@ -873,6 +919,7 @@ static void spawn_newbie(void) {
     if (N[i].alive) continue;
     npc_t *n = &N[i];
     memset(n, 0, sizeof *n);
+    G.newbies_seen++;
     n->alive = true; n->state = 0; n->x = L->door_x; n->z = L->door_z; n->hold = -1; n->target = -1; n->bike = -1;
     const box_t *b = &L->newbie_box;
     for (int t = 0; t < 30; t++) {
@@ -1002,14 +1049,32 @@ static void spawn_donation(void) {
 /* a clear spot on the open floor; false when there is none, and the caller skips */
 static bool floor_spot(float *x, float *z) { return spot_in(&L->spot_box, 0.6f, x, z); }
 
-/* a weighted pick over the rows the game has, from the night's weight column */
+/* the events that hurt; CALM and CHAOS scale their weights by G.badmul */
+static bool bad_event(int eff) {
+  return eff == E_HEAT || eff == E_HABOOB || eff == E_DAISY || eff == E_DONATION ||
+         eff == E_STRANGE || eff == E_FRIDGE || eff == E_SPAGHETTI || eff == E_LANDLORD;
+}
+
+static int gcd(int a, int b) { while (b) { int t = a % b; a = b; b = t; } return a; }
+
+/* a weighted pick over the rows the game has, from the night's weight column.
+ * Weights are scaled to integers by tenths of badmul and the tenths divided
+ * back out where they can be, so at badmul 1 the pick is the plain integer pick. */
 static int pick_event(void) {
   int n = COUNT(EVENTS) < EVENT_ROWS ? COUNT(EVENTS) : EVENT_ROWS;
-  int total = 0;
-  for (int i = 0; i < n; i++) total += L->night.weight[i];
+  int w[EVENT_ROWS], total = 0, g = 0;
+  int bad10 = (int)(G.badmul * 10 + 0.5f);
+  for (int i = 0; i < n; i++) {
+    w[i] = L->night.weight[i] * (bad_event(EVENTS[i]) ? bad10 : 10);
+    if (w[i] < 0) w[i] = 0;
+    g = gcd(g, w[i]);
+  }
+  if (g <= 0) return -1;
+  g = gcd(g, 10);   /* undo only the tenths, so the integer pick at badmul 1 is unchanged */
+  for (int i = 0; i < n; i++) { w[i] /= g; total += w[i]; }
   if (total <= 0) return -1;
-  int r = (int)(rnd() % total), e;
-  for (e = 0; e < n; e++) { r -= L->night.weight[e]; if (r < 0) break; }
+  int r = (int)(rnd() % (uint32_t)total), e;
+  for (e = 0; e < n; e++) { r -= w[e]; if (r < 0) break; }
   return e < n ? e : n - 1;
 }
 
@@ -1095,13 +1160,19 @@ void game_reset_world(void) { clear_world(); }
 void game_start_night(void) {
   const night_t *nt = &L->night;
   clear_world();
+  if (G.attract) default_settings(); else game_apply_settings();
   /* playing alone is lonely, and the dilemma needs a commons: bring members */
-  if (!G.attract && human_count() == 1 && player_count() == 1) { game_add_bot(nt->solo_bots[0]); game_add_bot(nt->solo_bots[1]); }
+  if (!G.attract && human_count() == 1 && player_count() == 1 && G.want_bots) {
+    int a, b;
+    game_mode_bots(&a, &b);
+    game_add_bot(a); game_add_bot(b);
+  }
   G.phase = PH_NIGHT; G.end = END_NONE; G.t = 0;
-  G.night_len = nt->len;
   G.clutter = 0; G.vibe = nt->vibe_start; G.fire_warn = 0; G.heat = 0; G.landlord = 0;
   G.event = -1;
-  G.next_event = nt->first_event; G.next_newbie = nt->first_newbie; G.next_dish = 8; G.next_donation = nt->first_donation;
+  G.next_event = nt->first_event * G.pace; G.next_newbie = nt->first_newbie * G.pace;
+  G.next_dish = 8 * G.pace; G.next_donation = nt->first_donation * G.pace;
+  G.coach_st = -1; G.team_karma = 0; G.newbies_seen = G.newbies_greeted = 0; G.end_variant = 0;
   G.nights++;
   S[ST_SINK].count = nt->start_dishes;
   for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -1110,6 +1181,7 @@ void game_start_night(void) {
     p->clout = p->karma = p->proposals = p->greeted = p->mates = p->tasks = 0;
     p->sewn = p->notices = p->wiped = p->baths = p->welds = p->flats = p->shelved = p->fixes = p->unplugged = p->dishes = 0;
     p->read_t = p->read_cool = 0;
+    p->ready = false;
     p->idle = 0; p->boost = 0; p->owes_bottle = false; p->hold = -1;
     p->x = L->start_x + (i % 4) * 1.2f; p->z = L->start_z + (i / 4) * 0.9f;
   }
@@ -1122,6 +1194,11 @@ void game_start_night(void) {
     else if (floor_spot(&x, &z)) spawn_item(IT_SCRAP, x, z, 0, 0);
   }
   for (int i = 0; i < nt->start_donations; i++) spawn_donation();
+  /* CHAOS: the second printer is already down and has already made spaghetti */
+  if (!G.attract && G.mode == MODE_CHAOS && S[ST_PRINT2].present) {
+    S[ST_PRINT2].state = S_BROKEN;
+    spawn_item(IT_SPAGHETTI, S[ST_PRINT2].x, S[ST_PRINT2].z + 1.0f, 0, 0);
+  }
   ticker_sub("HACK YOUR HACKERSPACE. TUESDAY 7 PM.", "MAKE COOL STUFF FOR CLOUT. KEEP THE SPACE OPEN FOR KARMA.", C_HAZARD);
   audio_music(G.attract ? 1 : 2);
   if (!G.attract) audio_play(SFX_ALARM);
@@ -1140,6 +1217,7 @@ static void end_night(int why) {
     return;
   }
   G.end = why; G.phase = PH_RESULTS; G.t = 0;
+  G.end_variant = END_VARIANT_COUNT[why & 3] ? (int)(rnd() % (uint32_t)END_VARIANT_COUNT[why & 3]) : 0;
   float c = G.clutter, v = G.vibe;
   calm_meters();
   G.clutter = c; G.vibe = v;   /* the results screen may want them; the warnings and heat stop now */
@@ -1198,13 +1276,13 @@ void game_update(float dt) {
   float rush = (1 + nt->rush_time * G.t / G.night_len) * (1 + nt->rush_players * (player_count() - 1));
   dt *= rush;
   if (G.heat > 0) G.heat -= dt / rush;
-  if ((G.next_event -= dt) <= 0) { fire_event(); G.next_event = nt->event_gap + frnd() * nt->event_jit; }
+  if ((G.next_event -= dt) <= 0) { fire_event(); G.next_event = (nt->event_gap + frnd() * nt->event_jit) * G.pace; }
   if ((G.next_newbie -= dt) <= 0) {
     if (nt->newbie_until <= 0 || G.t < nt->newbie_until) spawn_newbie();
-    G.next_newbie = nt->newbie_gap + frnd() * nt->newbie_jit;
+    G.next_newbie = (nt->newbie_gap + frnd() * nt->newbie_jit) * G.pace;
   }
-  if ((G.next_dish -= dt) <= 0) { if (S[ST_SINK].present && S[ST_SINK].count < 10) S[ST_SINK].count++; G.next_dish = nt->dish_gap; }
-  if ((G.next_donation -= dt) <= 0) { spawn_donation(); G.next_donation = nt->donation_gap + frnd() * nt->donation_jit; }
+  if ((G.next_dish -= dt) <= 0) { if (S[ST_SINK].present && S[ST_SINK].count < 10) S[ST_SINK].count++; G.next_dish = nt->dish_gap * G.pace; }
+  if ((G.next_donation -= dt) <= 0) { spawn_donation(); G.next_donation = (nt->donation_gap + frnd() * nt->donation_jit) * G.pace; }
 
   dt /= rush;
   if (G.landlord > 0) {
