@@ -106,7 +106,7 @@ level_t LEVELS[LEVEL_COUNT] = {
       { PR_BROOM, 0, -10.3f, 0, -6.5f, 0, NULL },                                                      /* leaning on the fridge */
       { PR_TOOLCART, 0, 7.8f, 0, -5.2f, 0, NULL },                                                     /* inside the fence */
       { PR_BUCKET, 0, 6.0f, 0, -4.9f, 0, NULL }, { PR_BUCKET, 0, 9.0f, 0, -5.4f, 0, NULL },
-      { PR_BUCKET, 0, 1.4f, 0, 2.2f, 0, NULL },                                                        /* under the HYH table */
+      { PR_BUCKET, 0, 1.1f, 0, 2.2f, 0, NULL },                                                        /* under the HYH table */
       { PR_WATER, 0, 10.9f, 0, -6.0f, 0, NULL },                                                       /* two cases by the door */
       { PR_AFRAME, 0, 1.8f, 0, 7.6f, 0, NULL },                                                        /* on the sidewalk */
       { PR_BIKERACK, 0, -3.0f, 0, 7.7f, 0, NULL },                                                     /* slots at x -3.0, -2.4, -1.8, -1.2 */

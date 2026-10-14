@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
+#include "wasmcart.h"
 
 game_t G;
 settings_t SET;   /* the saved settings; main.c loads and writes them */
@@ -1443,6 +1445,9 @@ void game_reset_world(void) { clear_world(); }
 
 bool game_lights_dark(void) { return L->light.sun_i < 1.0f; }   /* only the DARK preset runs the sun under 1 */
 
+static void accept_reset(void);
+static void accept_tick(float dt);
+
 void game_start_night(void) {
   const night_t *nt = &L->night;
   clear_world();
@@ -1504,6 +1509,7 @@ void game_start_night(void) {
   ticker_sub("HACK YOUR HACKERSPACE. TUESDAY 7 PM.", "MAKE COOL STUFF FOR CLOUT. KEEP THE SPACE OPEN FOR KARMA.", C_HAZARD);
   audio_music(G.attract ? 1 : 2);
   if (!G.attract) audio_play(SFX_ALARM);
+  accept_reset();
 }
 
 static void calm_meters(void) {
@@ -1512,7 +1518,70 @@ static void calm_meters(void) {
   G.ticker_t = 0;
 }
 
+/* ── the acceptance log (FINAL-space.md 9.3 and 13.6) ────────────────
+ * A bot that stays within 0.5 of one spot for a whole 10 s window, without
+ * holding A on a task or loitering by the board, prints BOT_STILL slot x z; every half
+ * second a bot within 0.9 of a station's footprint counts as a visit,
+ * and end_night prints the visits and a NOVISIT line for each station with a
+ * face that no bot reached. tools/accept.sh reads these lines. */
+static float still_x[MAX_PLAYERS], still_z[MAX_PLAYERS], still_far[MAX_PLAYERS], still_t, visit_t;
+static uint16_t visits[ST_COUNT];
+
+static void accept_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void accept_log(const char *fmt, ...) {
+  char b[256];
+  va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
+  wc_log(b, (unsigned)strlen(b));
+}
+
+static void accept_reset(void) {
+  memset(visits, 0, sizeof visits); still_t = visit_t = 0;
+  for (int i = 0; i < MAX_PLAYERS; i++) { still_x[i] = P[i].x; still_z[i] = P[i].z; still_far[i] = 0; }
+}
+
+static void accept_tick(float dt) {
+  if ((visit_t += dt) >= 0.5f) {
+    visit_t = 0;
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+      if (!P[i].active || !P[i].bot) continue;
+      for (int k = 0; k < ST_COUNT; k++) {
+        if (!S[k].present || S[k].face == FACE_NONE || k == ST_SWITCH) continue;
+        if (box_dist(P[i].x, P[i].z, &S[k]) < 0.9f && visits[k] < 65535) visits[k]++;
+      }
+    }
+  }
+  /* the farthest each bot got from where the window began: a bot whose loop
+   * brings it back to the same spot ten seconds later is not wedged */
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    float d = hypotf(P[i].x - still_x[i], P[i].z - still_z[i]);
+    if (d > still_far[i]) still_far[i] = d;
+    if (P[i].work_kind != W_NONE || P[i].goal == W_LOITER) still_far[i] = 99;   /* holding A or loitering on purpose */
+  }
+  if ((still_t += dt) < 10) return;
+  still_t = 0;
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    player_t *p = &P[i];
+    if (p->active && p->bot && still_far[i] < 0.5f)
+      accept_log("BOT_STILL %d %.2f %.2f goal %d ref %d t %.0f", i, p->x, p->z, p->goal, p->goal_ref, G.t);
+    still_x[i] = p->x; still_z[i] = p->z; still_far[i] = 0;
+  }
+}
+
+static void accept_visits(void) {
+  bool bots = false;
+  for (int i = 0; i < MAX_PLAYERS; i++) if (P[i].active && P[i].bot) bots = true;
+  if (!bots) return;   /* a night of humans only says nothing about the bots */
+  char b[200]; int n = snprintf(b, sizeof b, "VISITS %s", L->name);
+  for (int k = 0; k < ST_COUNT; k++) {
+    if (!S[k].present || S[k].face == FACE_NONE || k == ST_SWITCH) continue;
+    if (!visits[k]) accept_log("NOVISIT %s", S[k].label);
+    if (n < (int)sizeof b - 8) n += snprintf(b + n, sizeof b - n, " %d", visits[k]);
+  }
+  accept_log("%s", b);
+}
+
 static void end_night(int why) {
+  accept_visits();
   if (G.attract) {
     calm_meters();
     game_remove_bots(); clear_world();
@@ -1603,6 +1672,7 @@ void game_update(float dt) {
   }
 
   dt /= rush;
+  accept_tick(dt);
   if (S[ST_BATH].present) S[ST_BATH].timer = fminf(100, S[ST_BATH].timer + 0.4f * dt);   /* dirtiness, on real time */
   if (S[ST_STORAGE].timer > 0) S[ST_STORAGE].timer -= dt;   /* the tilted box lies there a while */
   /* the forge cools on real time; too hot is a forced break */

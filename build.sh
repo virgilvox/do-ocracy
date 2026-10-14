@@ -2,7 +2,7 @@
 # Builds DO-OCRACY as a wasmcart GL cart (build/do-ocracy.wasc).
 #
 #   ./build.sh              # full build
-#   ./build.sh smoke        # the pipeline smoke test cart (tools/smoke.c)
+#   ./build.sh smoke        # the pipeline smoke test cart (tools/pipeline-smoke.c)
 #
 # Needs: emcc (emsdk), node >= 22, and the submodules
 # (git submodule update --init).
@@ -50,7 +50,7 @@ fi
 node "$ROOT/tools/gen-logo.mjs" "$ROOT/assets/brand/hsl-mark-paths.json" "$OUT/obj/game/logo_mesh.h"
 
 if [ "${1:-}" = smoke ]; then
-  SRCS="$ROOT/tools/smoke.c $ROOT/src/gen/hsx_gl.c"; NAME=smoke; GAMEF=""
+  SRCS="$ROOT/tools/pipeline-smoke.c $ROOT/src/gen/hsx_gl.c"; NAME=smoke; GAMEF=""
 else
   SRCS="$(ls "$ROOT"/src/*.c) $ROOT/src/gen/hsx_gl.c $ROOT/third_party/qrcodegen/qrcodegen.c"; NAME=do-ocracy; GAMEF="-DWC_USE_GL -DWC_USE_NET_PEER"
 fi

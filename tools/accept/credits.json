@@ -1,0 +1,6 @@
+[
+ {"from":100,"to":105,"pad":0,"buttons":["A"]},
+ {"from":160,"to":165,"pad":0,"ly":-32767},
+ {"from":220,"to":225,"pad":0,"buttons":["A"]},
+ {"from":300,"to":305,"pad":0,"buttons":["B"]}
+]

@@ -8,19 +8,19 @@ DO-OCRACY is an arcade game about one Tuesday night of Hack Your Hackerspace at 
 
 ## The game
 
-It is 7 PM on a Tuesday. The doors are open, the laser is calling, and the sink already has three dishes in it.
+It is 7 PM on a Tuesday. The doors are open, the laser is calling, and the sink already has three dishes in it. The doors lock at ten.
 
 Everybody scores two things:
 
-- CLOUT is for you. Cut something on the large 80W laser, run a print on Ouch or Dr. Strange, solder something at the bench, cut a sticker on Sir Cutsalot (always free). Carry it to the show window.
-- KARMA is for the space. Wash the dishes. Haul scrap, empty Club-Mate bottles and print spaghetti to the trash. Move donations (a very heavy CRT, three broken printers, a chest freezer that runs fine) to the Free Pile. Unclog the printers. Clean the laser when it is covered in dust. Unplug the daisy-chained power strips. Say hi to the newbies.
+- CLOUT is for you. Cut something on the LARGE 80W LASER, run a print on OUCH or DR. STRANGE, solder something at the electronics bench, sew something, weld something, cut a sticker on SIR CUTSALOT (always free). Carry it to the show window.
+- KARMA is for the space. Wash the dishes. Haul scrap, empty Club-Mate bottles and print spaghetti to the trash in the back hallway. Move donations (a very heavy CRT, three broken printers, a chest freezer that runs fine) to the free stuff shelf. Unclog the printers. Clean the laser when it is covered in dust. Unplug the daisy-chained power strips. Clean the bathroom, wipe the whiteboard, rock the vending machine, fix a flat at the bike station, shelve the books, post a notice on the overflowing storage bin, shut the back door before the desert comes in. Say hi to the newbies.
 
 The space has two meters:
 
 - CLUTTER goes up with every mess on the floor, every dirty dish, every broken machine. At 100 the fire marshal is on the way. Five seconds later the night is over.
-- VIBE drains when clutter is high, when a newbie walks out because nobody said hi, and when the landlord sees the Free Pile. At 0 everybody burns out.
+- VIBE drains when clutter is high, when a newbie walks out because nobody said hi, and when the landlord sees the free pile. At 0 everybody burns out.
 
-Survive until 11 PM and the space lives to see another Tuesday. Then the scoreboard ranks everyone by clout and hands out awards. Most clout with the least karma gets GLAMOUR BIAS. Most karma gets JANITORIAL CO-OP, and a banner that says they were the real winner. Whoever did nothing gets LURKER: "Paid dues. Said nothing. Kept the lights on."
+Survive until closing and the space lives to see another Tuesday. Then the scoreboard ranks everyone by clout and hands out awards. Most clout with the least karma gets GLAMOUR BIAS. Most karma gets JANITORIAL CO-OP, and a banner that says they were the real winner. Whoever did nothing gets LURKER: "Paid dues. Said nothing. Kept the lights on."
 
 If the space closes, every point of clout is void. Karma stands. It is the commons dilemma with a laser cutter. Glamour work is fun and pays you. Janitorial work is boring and pays the room. The laser leaves scrap. The prints jam. Club-Mate makes you fast and then you litter. Every newbie you greet becomes a member who quietly cleans up after everyone, for a while, until they drift away (the four year sine wave).
 
@@ -30,28 +30,54 @@ When nobody is playing, the cabinet runs an attract mode. Three archetypes play 
 
 ## The space
 
-The floor plan is a working makerspace, zone by zone: the wood shop and lumber rack at the back left (OSB floor, sawdust, a table saw), the laser on its hazard-taped mat, the printing counter with Ouch, Dr. Strange and Sir Cutsalot, the electronics bench on its ESD mat, the metal shop on the right wall (a lathe, a mill that is not a Bridgeport) by the alley door and the dumpster, a checkerboard kitchen with the coffee station and a table, the lounge with the lurker couch, the work island and the assembly table in the middle, Show & Tell in the front window, and the Free Pile by the door. Brick walls, strip lights, string lights, a bike on the wall, the whiteboard that says GOTO 1.
+The room is the storefront at 108 W Main St, seen from the street with the front wall lifted off. Three bands run from clean to dirty:
 
-There are five nights, picked with ROOM in SETTINGS: CLASSIC TUESDAY, OPEN HOUSE (noon, crowds, LEGO Day, no welding), HABOOB NIGHT (dust everywhere, the back door will not stay shut), MOVE NIGHT (the wood shop moved again, boxes) and LATE NIGHT (after ten, dark, the fridge is locked, someone is asleep on the couch). The attract demo always plays CLASSIC TUESDAY.
+- The front band is the storefront. Glass with mullions, the double doors in the middle of a terrazzo vestibule under the lit facade sign, and a show window either side: the west window holds the CRT wall and the LEGO crates, the east window is the SHOW WINDOW where finished projects go (robot, LED cube, marquee, DONATE screens). The host desk sits just inside the door, the HYH table on trestles in the middle, the LEGO table and COFFEE AND BOOKS on the west, and the coworking desks down the east wall under the hack letters, with pendants over them.
+- The middle band is the bays. Down the west wall: the vending machine, the sewing tables, MEMBER STORAGE, the light switch and the FREE STUFF shelf. The craft counter with SIR CUTSALOT, the rolling whiteboard, the printing counter with OUCH and DR. STRANGE, the donation bin and the ELECTRONICS bench on the east wall.
+- The back band is the dirty end. The snack fridge and the sink in the kitchen corner, the supply closet and the stairs, the bathroom door, the couch facing the LARGE 80W LASER on its mat, the four painted scrap bays (the plywood), the bike station, the wood tools bay, the fenced machine shop with a lathe and a mill on concrete, the welding bay, and the back hallway recess with the trash, labelled TRASH (ALLEY, 225 FT), beside the green TURN OFF GAS door that the desert likes to blow open.
 
-Station labels are level data (src/levels.c) and use the lab's public tool names: LARGE 80W LASER, OUCH, DR. STRANGE, SIR CUTSALOT. The old joke names are retired everywhere.
+The floor is white vinyl tile with whole tiles of orange and red where you stand to use something, a checker patch, concrete in the shop and grey mats under the thin machines. Stencils on the floor name the zones (CRAFT CORNER, COWORKING, MACHINE SHOP, LASER. EYES ON IT.). The floor and walls are textures painted at startup with the HUD's own drawing routines, so there are no image files in the cart.
 
-The floor and walls are textures painted at startup with the HUD's own drawing routines, so there are no image files in the cart.
+There are five nights, picked with ROOM in SETTINGS. Each is the same storefront with its own furniture, lighting and night script:
+
+| Night | Hours | What is different |
+| --- | --- | --- |
+| CLASSIC TUESDAY | 7 PM to 10 PM, 3:00 | An ordinary open night. The attract demo always plays this one |
+| OPEN HOUSE | noon to 4 PM, 3:00 | A first Saturday. Bright daylight, folding tables, visitors at the LEGO table, crowds of newbies, tacos |
+| HABOOB NIGHT | 7 PM to 10 PM, 3:00 | A warm dust wash, the back door opens on its own, sawdust blows in |
+| MOVE NIGHT | 7 PM to 10 PM, 3:20 | The wood shop moved again, the printing counter is in the hall, boxes everywhere |
+| LATE NIGHT | 10 PM to 2 AM, 2:30 | Dark, pendants only, the fridge is locked, someone is asleep on the couch, no newbies after a while |
+
+Station labels are level data (`src/levels.c`) and use the lab's public tool names: LARGE 80W LASER, OUCH, DR. STRANGE, SIR CUTSALOT. The old joke names are retired everywhere.
+
+One rule holds the layout together, the gap rule: every two solid things in the room either touch or leave at least 0.76 units between them on one axis, with no diagonal pinch. Anything narrower wedges a bot or a player. `tools/smoke.c` and `tools/gapcheck.py` check it, with the spawn points, the approach side of every station, the floor tiles and the stencils, on all five nights.
 
 ## Controls
 
-| | Move | Do it (hold for work) | Drop | Propose | Begin |
+| | Move | Do it (hold for work) | Drop, back | Propose | Ready, pause |
 | --- | --- | --- | --- | --- | --- |
 | Gamepad (any of 4) | stick or d-pad | A (south) | B (east) | X or Y | Start |
 | Keyboard player 1 | WASD | Space (or E) | Q | R | Enter |
-| Keyboard player 2 | arrows | . (period) | , (comma) | / (slash) | Enter |
-| Phone | drag the stick box | A | B | X | Start the night |
+| Keyboard player 2 | arrows | . (period) | , (comma) | / (slash) | right Shift |
+| Phone | drag the stick box | A | B | X | Start |
 | Keyboard under RetroArch | arrows | Z | X | A | Enter |
 | Keyboard in the desktop wasmcart player | arrows or WASD | X or Space | Z | | Enter |
 
-Press A on the title to take the menu, then PLAY. Anyone else who presses A waits at the door and is seated in the lobby. In the lobby, press Start (Enter, or right Shift on the arrows half) to say READY; when every player is ready a 3 second countdown starts the night, and otherwise it starts by itself 25 seconds after the last join. Hold B for 1.5 seconds to go home (alone, 1 second takes you back to the menu). Drop in any time during the night.
+The two keyboard players read raw keys, which the browser player delivers. Under RetroArch (Batocera) and in the desktop `npx wasmcart` player, the keyboard arrives as pad 1 with that host's own bindings instead, shown in the last two rows. Pads rumble briefly when you take the menu, pick something, get turned away at the door, join the lobby and when the night starts, where the pad has motors.
 
-The two keyboard players read raw keys, which the browser player delivers. Under RetroArch (Batocera) and in the desktop `npx wasmcart` player, the keyboard arrives as pad 1 with that host's own bindings instead, shown in the last two rows. Someone who clocks in on a pad or the keyboard and then does nothing for 75 seconds goes home, so the cabinet can fall back to its demo.
+## The start screen and the modes
+
+The title shows the room behind a light scrim: the mark, DO-OCRACY, one tagline at a time and PRESS A. After 20 idle seconds the attract screen runs the bots' night with the floor loop tips along the bottom. A or Start on any pad, keyboard half or phone takes the menu; that seat is the owner (P1) and drives every menu screen. Anyone else who presses A gets one line (ONE AT A TIME. THIS IS A DO-OCRACY.) and waits AT THE DOOR; they are seated in the lobby after the owner. An owner who leaves the menu alone for 20 seconds hands it to the next seat at the door, or back to the title.
+
+The menu has five rows:
+
+- PLAY, with the mode on the row (left and right change it). It opens the lobby in the room picked in SETTINGS.
+- MODES: five cards. SOLO (you and two bots, BUILDER and TALKER), CO-OP (one team karma total, graded S, A, B or C), VERSUS (most clout wins, and if the lab closes nobody wins; alone, the bots are your rivals), CHAOS (more and worse events, printers jam more, a printer is already down, two minute nights) and CUSTOM (opens SETTINGS on the way to the lobby).
+- SETTINGS: NIGHT LENGTH, BOTS, CHAOS, PHONES, MUSIC, SFX, ROOM (the five nights, with a map), HELP (rules flash and coach: off, first night, always), RESET TO DEFAULTS and DONE. Rows a mode decides are dimmed with the mode's name. Settings and the lab records are kept in the cart's save region.
+- HOW TO PLAY: the rules flash, five picture cards (A next, B skip).
+- CREDITS: what the game is and where it came from, with the lab records (best karma, best clout, best co-op team, nights played).
+
+In the lobby every player gets a seat card along the bottom. Press Start (Enter, or right Shift on the arrows half) to say READY; when every player is ready a 3 second countdown starts the night, and otherwise it starts by itself 25 seconds after the last join. Hold B for 1.5 seconds to go home (the owner alone: 1 second goes back to the menu). Drop in any time during the night. Start during a night pauses it (RESUME, HOW TO PLAY, QUIT TO MENU; anyone's Start or B resumes). On the results screen, after the tape runs out, A plays again and B takes the menu back to whoever pressed it. Someone who clocks in on a pad or the keyboard and then does nothing for 75 seconds goes home, so the cabinet can fall back to its demo.
 
 ## Never guess what to do
 
@@ -64,7 +90,7 @@ The two keyboard players read raw keys, which the browser player delivers. Under
 - The clock counts down the time left in the night in big digits, the wall clock small beside it, over a progress bar marked in hours. CLUTTER carries the fire marshal's helmet and VIBE a heart; the phone join strip shrinks to its QR and code after 45 seconds (CO-OP and VERSUS put TEAM KARMA or the LEADER there instead). Station names stay dim until you are near one or it needs you. Messages get their own strip under the top row, above the room, so they never cover the floor.
 - Labels in the room never stack: each one moves to the nearest free spot.
 - Every event banner says what it means ("HABOOB! Dust on the floor and in the laser. Sweep it.").
-- The title shows the room behind a light scrim with nine strings at most; after 20 idle seconds the attract screen runs the floor loop tips. The lobby shows one seat card per player along the bottom, with the bots a solo night will add.
+- The lobby shows one seat card per player along the bottom, with the bots a solo night will add, and a card for the night you are about to play.
 
 ## Phones
 
@@ -106,7 +132,7 @@ npm install
 ./build.sh                 # build/do-ocracy.wasc and web/do-ocracy.wasc
 ```
 
-The cart is about 1.1 MB: three.c, the game, the Bellows engine, four fonts and a config file. The floor and wall textures are painted at startup, so there are no images in it.
+The cart is about 1.3 MB: three.c, the game, the Bellows engine, four fonts and a config file. The floor and wall textures are painted at startup, so there are no images in it.
 
 Check it the way romdev does (`npx romdevtools`, then from any MCP client or plain HTTP):
 
@@ -123,7 +149,11 @@ node tools/shot.mjs build/do-ocracy.wasc build/shots/s 60,600            # scree
 node tools/shot.mjs build/do-ocracy.wasc build/shots/s 600 script.json   # with scripted pad input
 WAV=build/night.wav node tools/shot.mjs ...                               # and the audio
 PACE=1 node tools/shot.mjs ... & node tools/phone-sim.mjs ROOM "NAME"     # a fake phone over the real relay
+SAVE=out.bin SAVE_IN=in.bin node tools/shot.mjs ...                       # dump the save region after, load one before
+tools/accept.sh                                                           # the whole acceptance run (see HANDOFF.md)
 ```
+
+`tools/accept.sh` builds the cart, runs the level checker over all five nights (`tools/smoke.c` and its Python twin `tools/gapcheck.py`), lints every string (`tools/lint-content.py`), plays the scripted sessions in `tools/accept/` and the five nights in `tools/scripts/`, greps their logs for layout errors, wedged bots and missing render states, checks the save region and the audio peak, and prints GREEN or RED with the screenshots to look at.
 
 ## The music
 
@@ -139,8 +169,10 @@ The songs are data at the top of `src/audio_bellows.cpp` in doot-doot-revolution
 
 | Part | What it is |
 | --- | --- |
-| [src/main.c](src/main.c) | The wasmcart entry points, input from pads, keyboard and phones, phase flow, camera |
-| [src/game.c](src/game.c) | The night: stations, messes, newbies, events, meters, scoring, the archetype bots |
+| [src/main.c](src/main.c) | The wasmcart entry points, the seats (pads, keyboard halves, phones), the menus, the save region, phase flow, camera |
+| [src/game.c](src/game.c) | The night: stations, messes, newbies, events, meters, scoring, the archetype bots and their path planner |
+| [src/levels.c](src/levels.c) | The five nights as data: where everything stands, the floor, the lighting, the night script |
+| [src/levelcheck.c](src/levelcheck.c) | The gap rule and the other layout checks, run on every room the cart builds and by `tools/smoke.c` |
 | [src/world.c](src/world.c) | The 3D space in [three.c](https://github.com/monteslu/three.c): the three.js API in C, drawing three.js r186's own programs |
 | [src/draw.c](src/draw.c), [src/hud.c](src/hud.c) | The 2D layer in HeatSync's GANTRY theme: stb_truetype text, panels, caution tape, the QR, and the HeatSync mark rasterized from its official paths |
 | [src/audio_bellows.cpp](src/audio_bellows.cpp) | Music and effects on [Bellows](https://bellows.live) (bellows-embedded, the C++ port of its DSP core), written the way doot-doot-revolution writes songs: sections, a chord per bar, written hooks, layers in and out, fills, voice-led pads, reverb and delay sends, a compressor and limiter |

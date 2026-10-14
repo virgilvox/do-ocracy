@@ -51,7 +51,14 @@ static const char *const DENY_LINES[] = {
   "PINNED BY THE MODE. PICK CUSTOM.",
 };
 static const char *const NEEDS_LINE = "NEEDS 2 PLAYERS OR BOTS";
-static const char *const UNBUILT_LINE = "UNDER CONSTRUCTION. LIKE THE WOOD SHOP.";
+/* CREDITS (6.7): roles and places only, never a person's name. The last line is hazard */
+static const char *const CREDITS[] = {
+  "HEATSYNC LABS. 108 W MAIN ST, MESA. SINCE 2009.",
+  "ENGINE: THREE.C ON WASMCART.  NOISES: BELLOWS.",
+  "FONTS: ARCHIVO BLACK, IBM PLEX MONO, CHARIS SIL.",
+  "THE FLOOR LOOP HAS NEVER EXITED.",
+};
+static const char *const CREDITS_HEAD = "A GAME ABOUT A HACKERSPACE, MADE AT ONE.";
 
 /* X button. The Talker move. It feels productive. It is not. */
 static const char *const PROPOSALS[] = {
@@ -275,7 +282,7 @@ static const char *const PAUSE_ROWS[] = { "RESUME", "HOW TO PLAY", "QUIT TO MENU
 
 /* the settings screen's right panel: one line per row (FINAL-frontend.md 6.5) */
 static const char *const SETTINGS_HELP[] = {
-  "HOW LONG UNTIL 11 PM. THE DISHES DO NOT CARE.",
+  "HOW LONG UNTIL CLOSING. THE DISHES DO NOT CARE.",
   "MEMBERS FILL EMPTY SEATS. ONE OF THEM TALKS.",
   "HOW OFTEN THINGS GO WRONG. CALM IS SUSPICIOUS.",
   "SCAN THE CODE TO JOIN. NO APP. NO ACCOUNT.",
@@ -301,7 +308,7 @@ static const end_variant_t END_BURN_V[3] = {
   { "VIBE: 0", "THE MAILING LIST WON.",                 "200 MESSAGES. NOBODY CAME IN. ALL CLOUT IS VOID." },
 };
 static const end_variant_t END_OK_V[2] = {
-  { "11:00 PM. LIGHTS OUT.", "THE SPACE SURVIVES ANOTHER TUESDAY.", "CLOUT COUNTS. BUT YOU KNOW WHO DID THE DISHES." },
+  { "%s. LIGHTS OUT.",      "THE SPACE SURVIVES ANOTHER TUESDAY.", "CLOUT COUNTS. BUT YOU KNOW WHO DID THE DISHES." },
   { "RENT IS PAID. BARELY.", "THE LAB OPENS TOMORROW.",             "BECAUSE SOMEBODY SWEPT. SEE YOU THURSDAY." },
 };
 

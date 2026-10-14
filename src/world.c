@@ -9,6 +9,7 @@
  * retinted, so a level switch never adds a render state. */
 #include "game.h"
 #include "hud.h"
+#include "wasmcart.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -1345,7 +1346,14 @@ static void world_apply_lighting(const lighting_t *lt) {
   m_tube->emissive_intensity = lt->tube_e;
 }
 
+/* level_check findings to the host log; the NARROW and NEAR warnings stay in tools/smoke */
+static void check_log(const char *line) {
+  if (strstr(line, " NARROW ") || strstr(line, " NEAR ")) return;
+  wc_log(line, (unsigned)strlen(line));
+}
+
 static void build_all(const level_t *lv) {
+  level_check(lv, check_log);
   build_room(lv);
   build_stations();
   build_furniture(lv);

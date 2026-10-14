@@ -5,6 +5,12 @@
 //   node tools/shot.mjs build/do-ocracy.wasc out/prefix 60,300 [script.json]
 //
 // script.json: [{ "from": 0, "to": 30, "pad": 0, "buttons": ["A"], "lx": 0, "ly": -32767 }, ...]
+//
+// Environment:
+//   WAV=out.wav       write everything the cart played as 16-bit stereo 48 kHz
+//   SAVE=out.bin      write the cart's save region after the last frame
+//   SAVE_IN=in.bin    load this save region before wc_init (a fresh cabinet is all zero)
+//   PACE=1            real time and no fixed seed (lets the relay answer)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -38,7 +44,11 @@ const BTN = { A: 1, B: 2, X: 4, Y: 8, START: 64, UP: 256, DOWN: 512, LEFT: 1024,
 const W = 1280, H = 720;
 const { gl } = createWebGL2Context(W, H);
 const host = new CartHost();
-await host.load(new Uint8Array(readFileSync(cart)), { glBackend: gl, ...(process.env.PACE ? {} : { deterministic: { seed: 7 } }) });
+await host.load(new Uint8Array(readFileSync(cart)), {
+  glBackend: gl,
+  ...(process.env.PACE ? {} : { deterministic: { seed: 7 } }),
+  ...(process.env.SAVE_IN ? { saveData: new Uint8Array(readFileSync(process.env.SAVE_IN)) } : {}),
+});
 
 const audioChunks = [];
 for (let f = 0; f <= last; f++) {
@@ -76,5 +86,10 @@ if (process.env.WAV) {
   for (const c of audioChunks) for (const v of c) { buf.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(v * 32767))), o); o += 2; }
   writeFileSync(process.env.WAV, buf);
   console.log(`wav ${process.env.WAV}`);
+}
+if (process.env.SAVE) {
+  const save = host.getSaveData();
+  if (save) { writeFileSync(process.env.SAVE, save); console.log(`save ${process.env.SAVE} (${save.length} bytes)`); }
+  else console.log('save: the cart has no save region');
 }
 process.exit(0);

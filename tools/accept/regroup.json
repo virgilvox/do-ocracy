@@ -1,0 +1,7 @@
+[
+ {"from": 100, "to": 105, "pad": 0, "buttons": ["A"]},
+ {"from": 160, "to": 165, "pad": 0, "buttons": ["A"]},
+ {"from": 260, "to": 265, "pad": 0, "buttons": ["B"]},
+ {"from": 7500, "to": 7505, "pad": 0, "buttons": ["A"]},
+ {"from": 7560, "to": 7565, "pad": 0, "buttons": ["A"]}
+]

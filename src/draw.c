@@ -429,7 +429,8 @@ static void players_overlay(void) {
       hud_keycap(bx + 6, by + 3, g, done > 0 ? C_BONE : c, C_TAPE);
       hud_text(F_MONO, bx + gw + 16, by + 3, p->prompt, done > 0 ? C_BONE : karma ? C_INK_OK : C_HAZARD, 255, AL_LEFT);
     }
-    if (p->flash > 0) {
+    /* score pops: none behind the front end (6.2), and a bot's +0 proposal is noise, not a joke */
+    if (p->flash > 0 && !G.attract && !(p->bot && !strncmp(p->pop, "+0 ", 3))) {
       int a = p->flash < 0.4f ? (int)(p->flash / 0.4f * 255) : 255;
       int rise = (int)((1.4f - p->flash) * 50);
       hud_text(F_H2, sx + 3, sy - 86 - rise + 3, p->pop, C_SHADOW, a, AL_CENTER);
@@ -513,9 +514,12 @@ static void mode_panel(void) {
   }
 }
 
-/* the widest toast that is showing, for the reserve */
+/* the widest toast that is showing, for the reserve. The drawer cuts at 64
+ * characters (about 600 px at F_MONO_S, so a pill starts no further left than
+ * x 660); tools/lint-content.py holds every TOAST_ line to that */
+#define TOAST_CUT 64
 static int toast_w(int i) {
-  char b[49]; snprintf(b, sizeof b, "%s", toast_text[i]);   /* the drawer cuts at 48 */
+  char b[TOAST_CUT + 1]; snprintf(b, sizeof b, "%s", toast_text[i]);
   return hud_text_w(F_MONO_S, b) + 18;
 }
 static int toasts_widest(void) {
@@ -536,7 +540,7 @@ static void toasts(int xr, int y) {
     if (toast_t[i] <= 2) continue;
     float t = toast_t[i] - 2;
     int a = t < 1 ? (int)(t * 255) : 255;
-    char b[49]; snprintf(b, sizeof b, "%s", toast_text[i]);
+    char b[TOAST_CUT + 1]; snprintf(b, sizeof b, "%s", toast_text[i]);
     int w = toast_w(i);
     int ty = y + shown * 24;
     hud_rect(xr - w, ty, w, 21, C_CHAR, a * 210 / 255);
@@ -749,6 +753,11 @@ static void title_idle(float f) {
     hud_set_alpha(255);
   }
   hud_text(F_MONO_S, 1256, 690, "HEATSYNC LABS. MESA. SINCE 2009.", C_SMOKE, late, AL_RIGHT);
+  if (M.lab_karma > 0) {
+    char b[64], n[16]; commas(n, sizeof n, M.lab_karma);
+    snprintf(b, sizeof b, "LAB RECORD  %s KARMA  BY %s", n, M.lab_karma_name);
+    hud_text(F_MONO_S, 24, 690, b, C_ASH, late, AL_LEFT);
+  }
 }
 
 /* 6.2: the bots get the overlays a player would, faded, under the front end */
@@ -1202,21 +1211,39 @@ static void menu_settings(float dt) {
   hud_set_alpha(255);
 }
 
-/* CREDITS lands in a later stage; each is a
- * card that says so and returns to the menu on any button */
-static void menu_unbuilt(void) {
-  static const char *const NAMES[] = { "", "", "", "MODES", "SETTINGS", "HOW TO PLAY", "CREDITS" };
+/* 6.7: what it is, where it came from, and the lab's records from the save */
+static void credits_screen(void) {
   int ox = (int)(60 * (1 - hud_ease_out(fminf(1, M.t / 0.14f))));
   int a = (int)(255 * fminf(1, M.t / 0.14f));
   hud_set_alpha(a);
-  hud_eyebrow(108 + ox, 100, NAMES[M.screen < SCR_NONE ? M.screen : 0], C_ASH, AL_LEFT);
-  hud_rect(96 + ox + 6, 206, 620, 150, C_SHADOW, 255);
-  hud_panel(96 + ox, 200, 620, 150, C_SLAB, C_STEEL_HI);
-  hud_rect(96 + ox, 200, 620, 8, C_HAZARD, 255);
-  hud_text(F_H3, 120 + ox, 228, NAMES[M.screen < SCR_NONE ? M.screen : 0], C_BONE, 255, AL_LEFT);
-  hud_text(F_MONO, 120 + ox, 276, UNBUILT_LINE, C_ASH, 255, AL_LEFT);
-  footer_hint(96, 672, seat_cap(M.owner, 1), "BACK");
-  deny_line();
+  hud_eyebrow(108, 100, "CREDITS", C_ASH, AL_LEFT);
+  /* a band like the title's so the lines read over the running room */
+  hud_rect(0, 132, HUD_W, 412, C_CHAR, 235);
+  hud_rect(0, 132, HUD_W, 2, C_STEEL_HI, 255);
+  hud_rect(0, 542, HUD_W, 2, C_STEEL_HI, 255);
+  hud_logo(540 + ox, 150, 200, C_BONE);
+  hud_text_sh(F_H3, 640 + ox, 380, CREDITS_HEAD, C_BONE, 255, AL_CENTER);
+  for (int i = 0; i < COUNT(CREDITS); i++)
+    hud_text(F_MONO, 640 + ox, 420 + i * 30, CREDITS[i], i == COUNT(CREDITS) - 1 ? C_HAZARD : C_ASH, 255, AL_CENTER);
+  /* the record strip */
+  hud_rect(96 + 6, 560 + 6, 1088, 56, C_SHADOW, 255);
+  hud_panel(96, 560, 1088, 56, C_SLAB, C_STEEL_HI);
+  int x = 120;
+  x += hud_text(F_MONO_S, x, 579, "LAB RECORDS", C_HAZARD, 255, AL_LEFT) + 32;
+  char b[64], n[16];
+  if (M.lab_nights == 0) hud_text(F_MONO_S, x, 579, "NONE YET. THE SPACE IS WAITING.", C_ASH, 255, AL_LEFT);
+  else {
+    commas(n, sizeof n, M.lab_karma); snprintf(b, sizeof b, "KARMA %s %s", n, M.lab_karma_name);
+    x += hud_text(F_MONO_S, x, 579, b, C_LIVE, 255, AL_LEFT) + 32;
+    commas(n, sizeof n, M.lab_clout); snprintf(b, sizeof b, "CLOUT %s %s", n, M.lab_clout_name);
+    x += hud_text(F_MONO_S, x, 579, b, C_HAZARD, 255, AL_LEFT) + 32;
+    commas(n, sizeof n, M.lab_team); snprintf(b, sizeof b, "TEAM %s", n);
+    x += hud_text(F_MONO_S, x, 579, b, C_BONE, 255, AL_LEFT) + 32;
+    snprintf(b, sizeof b, "NIGHTS %d", M.lab_nights);
+    hud_text(F_MONO_S, x, 579, b, C_BONE, 255, AL_LEFT);
+  }
+  footer_hint(96, 660, seat_cap(M.owner, 1), "BACK");
+  deny_line_at(640, 524);
   owner_chip(1184, 670);
   hud_set_alpha(255);
 }
@@ -1392,7 +1419,8 @@ static void front_end(float dt) {
     case SCR_FLASH: rules_flash(); break;
     case SCR_MODES: menu_modes(dt); break;
     case SCR_SETTINGS: menu_settings(dt); break;
-    default: menu_unbuilt(); break;
+    case SCR_CREDITS: credits_screen(); break;
+    default: break;
   }
 }
 
@@ -1661,7 +1689,13 @@ static void results_screen(float dt) {
   hud_tape(0, 0, HUD_W, 24, T * 20);
   bool ok = G.end == END_SURVIVED, coop = G.mode == MODE_COOP, versus = G.mode == MODE_VERSUS;
   const end_variant_t *ev = end_variant();
-  hud_eyebrow(64, 48, ev->eyebrow, ok ? C_INK_OK : C_INK_ERR, AL_LEFT);
+  char eb[64];
+  if (strstr(ev->eyebrow, "%s")) {   /* the level's closing time: CLASSIC closes at 10 PM, LATE NIGHT at 2 AM */
+    int h = (L->night.clock_h0 + L->night.clock_span) % 24;
+    char at[16]; snprintf(at, sizeof at, "%d:00 %s", h % 12 == 0 ? 12 : h % 12, h < 12 ? "AM" : "PM");
+    snprintf(eb, sizeof eb, ev->eyebrow, at);
+  } else snprintf(eb, sizeof eb, "%s", ev->eyebrow);
+  hud_eyebrow(64, 48, eb, ok ? C_INK_OK : C_INK_ERR, AL_LEFT);
   hud_text(hud_text_w(F_H1, ev->head) > 1160 ? F_H2 : F_H1, 60, 70, ev->head, C_BONE, 255, AL_LEFT);
   hud_text(F_MONO, 64, 150, ev->sub, ok ? C_ASH : C_INK_ERR, 255, AL_LEFT);
   space_strip();

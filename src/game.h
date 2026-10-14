@@ -84,6 +84,9 @@ typedef struct {
   bool tape_held;       /* the lobby tape holds still */
   float pause_t;        /* seconds the pause overlay has been up */
   int rec_karma, rec_clout;   /* results: the slot that beat the lab's karma or clout record, or -1 */
+  /* the save region's records, mirrored by main.c for the title footer and CREDITS */
+  int lab_karma, lab_clout, lab_team, lab_nights;
+  char lab_karma_name[14], lab_clout_name[14];
   bool rec_team;        /* results: the co-op team beat the lab's best */
 } menu_t;
 extern menu_t M;       /* defined in game.c beside G, driven by main.c, drawn by draw.c */
@@ -342,6 +345,8 @@ extern level_t LEVELS[LEVEL_COUNT];
 extern const level_t *L;                 /* the active level */
 void levels_init(void);                  /* levels.c: fills the tables and the derived fields */
 void game_set_level(int idx);            /* levels.c: L, G.level, L->st into S[] */
+/* levelcheck.c: the eight rules of FINAL-space.md 9.2; each finding goes to out, the return is the error count */
+int level_check(const level_t *lv, void (*out)(const char *line));
 
 uint32_t rnd(void);
 float frnd(void);
