@@ -428,7 +428,7 @@ Coordinates are HUD pixels, origin top left. `hud_text` y is the top of the line
 - Mark: `hud_logo(150, 210, 180, C_BONE)`. Never anything else.
 - Title: `hud_text_sh(F_TITLE, 350, 248, "DO-OCRACY", C_BONE, 255, AL_LEFT)`. The block (mark plus title) is about 1000 px wide and sits centred.
 - Tagline: one line, `TAGLINES[(int)(T / 6.0f) % COUNT(TAGLINES)]`, crossfading over 0.3 s (alpha down then up on the swap). The 14 lines in section 8.6.
-- CTA: `hud_rect(436,506,420,56,C_SHADOW,255); hud_rect(430,500,420,56,C_HAZARD,255); hud_text(F_H2, 640, 506, "PRESS A", C_TAPE, 255, AL_CENTER)`. Pulse: the block grows 0 to 8 px in width and height about its centre on `0.5 + 0.5*sinf(T*4.4)` (1.4 s period). It never blinks off.
+- CTA: a hazard block centred at x 640, y 500, 56 tall, as wide as the text plus 72 (at least 420), reading `TITLE_CTA` ("PRESS A OR SPACE": the keyboard player presses Space on the web page and on the station), `C_TAPE` ink in F_H2, with `TITLE_CTA_SUB` ("A ON A PAD. SPACE ON THE KEYBOARD.") F_MONO_S ash centred at y 566 under it, always. Pulse: the block grows 0 to 8 px in width and height about its centre on `0.5 + 0.5*sinf(T*4.4)` (1.4 s period). It never blinks off.
 - Phone module: `hud_panel(1040,560,216,136,C_SLAB,C_STEEL_HI)`, `hud_qr(1052,572,96,G.join_url)`, eyebrow PHONES, code. Hidden entirely when `!net_online()` or `SET.phones == 0`.
 - "N AT THE DOOR" counts pending seats of every kind.
 - Footer left: LAB RECORD line only when `SAVE.best_karma > 0`: "LAB RECORD  %d KARMA  BY %s" where the name is the seat or phone name (never a real person's name typed by us). Footer right: "HEATSYNC LABS. MESA. SINCE 2009."
@@ -461,7 +461,8 @@ The living demo. No scrim. The room HUD is shown in a reduced form so a passerby
 
 - Drawn under the front end layer by `attract_overlay()`: `goal_guides` for bots too (a flag lifts the `p->bot` filter at `draw.c` 293 in attract), `station_labels` with names at alpha 150 and no status lines, `players_overlay` bot variant (14 px tags at alpha 170), pops, `fx_draw`.
 - Tips: `ATTRACT_TIPS[(int)(T / 3.0f) % COUNT]` in order; the five floor loop lines stay first and in sequence. The `$4,000` and `1,716` numbers are the only numbers on the attract screen.
-- Any seat input (any nav bit) returns to SCR_TITLE with the scrim fading in over 0.3 s. If that input was A or START, the seat becomes owner and the screen continues straight into SCR_MAIN (the mark animates from the corner, where it already is, so only the rows slide in).
+- The demo says it is one: `ATTRACT_TAG` ("DEMO") in a hazard block 44 tall centred at x 640, y 30, F_H2 tape ink, with `ATTRACT_SUB` ("THE BOTS ARE PLAYING. NOBODY IS AT THE CONTROLS.") in a `C_CHAR` pill under it at y 80. The corner block reads `ATTRACT_CTA` ("PRESS A OR SPACE TO PLAY"), sized to the text, right aligned at 1256, and its alpha pulses 190 to 255 on the same 1.4 s period as its size (it never blinks off).
+- Any seat input (any nav bit) returns to SCR_TITLE with the scrim fading in over 0.3 s. If that input was a button (A, B, X or START; `main.c` reads the edge on the seat's buttons, not only the nav bits), the seat becomes owner and the screen continues straight into SCR_MAIN (the mark animates from the corner, where it already is, so only the rows slide in). Nobody ever joins the demo night: `can_join()` is false while the front end is up.
 
 ### 6.3 SCR_MAIN
 
@@ -731,7 +732,7 @@ Night start wipe (0.6 s): two 24 px tape bars at y 0 and y 696 grow to 360 px ta
 |                                                                                 DONATED: A CRT          | 132 toast 2
 |            (room: goal chevrons, alarm badges, station names at 150, prompts)          |
 |                                                                                        |
-|   +----------+ +----------+ +----------+                                               | 658 player cards, centred, 210x50
+|   +----------+ +----------+ +----------+                                               | 660 player cards, centred, 210x50, in the dark band under the storefront
 |   |# PAD 1 [p]| |# WASD [k]| |# BUILDER [b]|                                           |     name F_MONO_S; seat glyph top right
 |   |# * 1040  + 320| ...                                                                |     GL_CLOUT then clout, GL_KARMA then karma, F_MONO_L
 +----------------------------------------------------------------------------------------+
@@ -745,7 +746,9 @@ Right slot (944,6) 320x56, by mode:
 - CO-OP: `mode_panel` 196x56 at (944,6): eyebrow TEAM KARMA and the total F_H2 live. VERSUS: eyebrow LEADER and the leading name plus clout in F_H3 hazard. In these two modes the join strip is always its narrow 120x56 form at (1144,6).
 - SOLO, CHAOS, CUSTOM: the join strip alone. It starts wide: `hud_panel(944,6,320,56)`, QR 48 at (949,10), eyebrow PHONES JOIN at (1006,12), code F_H3 hazard at (1004,30). At `G.t >= 45` its x and width tween over 0.3 s (`hud_ease_inout`) to the narrow form `hud_panel(1144,6,120,56)`: QR 48 at (1150,10), code F_MONO_S hazard at (1204,16), eyebrow JOIN at (1204,38). The text swaps at the midpoint. "ANY TIME" is deleted. The strip is hidden entirely when `SET.phones == 0` or `!net_online()`; the "PHONES OFFLINE / GRAB A CONTROLLER." variant is deleted.
 
-Slot bar at y 68 keeps the chain danger > ticker > coach (`draw.c` 773). Danger strings shorten to CLUTTER! with CLEAN. THE MARSHAL IS COUNTING. and VIBES! with SAY HI. CLEAN UP. Coach gating per section 4 (HELP). Steps of 8 s from `COACH_STEPS[]` (8.6); steps 1 to 3 set `G.coach_st` to ST_LUMBER, ST_LASER, ST_SHOW and `goal_guides` draws its chevrons in `C_ASH` at alpha 150 from every human without `has_goal` toward that station; steps 4 and 5 set `G.coach_st = -1`.
+The first five seconds of a real night (`G.t < 5`, never in attract): every human gets `YOU_ARE` ("YOU ARE %s" with the seat name) in F_H3 tape ink on a block in the player's colour 82 px over the head, bobbing 6 px, with a chevron pointing down at the body, fading over the last 0.5 s; the player's own card frame pulses in the same colour. The HACK YOUR HACKERSPACE ticker stays up at the same time.
+
+Slot bar at y 68 keeps the chain danger > ticker > coach (`draw.c` 773). The first two coach lines carry a `%s` for the group's button: A when everyone is on a pad or a phone, SPACE or PERIOD when the only humans are on that keyboard half, A OR SPACE for a mix (`group_key`, draw.c). The first rules card's caption and the HOW TO PLAY preview name the owner's key the same way (HOLD SPACE. DO THE THING. for the WASD seat). Danger strings shorten to CLUTTER! with CLEAN. THE MARSHAL IS COUNTING. and VIBES! with SAY HI. CLEAN UP. Coach gating per section 4 (HELP). Steps of 8 s from `COACH_STEPS[]` (8.6); steps 1 to 3 set `G.coach_st` to ST_LUMBER, ST_LASER, ST_SHOW and `goal_guides` draws its chevrons in `C_ASH` at alpha 150 from every human without `has_goal` toward that station; steps 4 and 5 set `G.coach_st = -1`.
 
 Toasts: `toasts(1264, 108)`: two slots, slot i right aligned at x 1264, y 108 + i*24; pill `hud_rect(1264 - w - 18, y, w + 18, 21, C_CHAR, a*210/255)`, 4 px colour edge on the pill's left, text F_MONO_S bone. Drawn for only two slots while `toast_t > 2` with the same 1 s fade in. Before world labels `draw_hud` calls `reserve(960, 104, 304, 52)` and, if the widest live toast is wider than 286 px, `reserve(1264 - w - 18, 104, w + 18, 52)` too. Toast strings: 44 chars or fewer for every new line, 48 is the hard cap (the drawer cuts at 48 with no ellipsis); section 8.6 lists the trimmed set. The "%s SHOWED OFF: %s" toast becomes "%s: %s" so a 13 char name plus a 32 char project fits.
 
@@ -770,7 +773,7 @@ Toasts: `toasts(1264, 108)`: two slots, slot i right aligned at x 1264, y 108 + 
 | prompt box with keycap and fill (342 to 363) | | stays, the one place a button name appears in play |
 | pops (364 to 369) | | stays |
 | proposal bubbles (370 to 378) | unlimited | one on screen at a time (the newest `bubble` wins) |
-| player cards (507 to 530) | name, source tag, two numbers, two eyebrows | name; `GL_PAD / GL_KEYS / GL_PHONE / GL_BOT` glyph at scale 1 at (x+cw-24, y+6) in `C_SMOKE` instead of the text tag; `GL_CLOUT` scale 1 at (x+14, y+22) then the clout number at x+34 in F_MONO_L hazard; `GL_KARMA` scale 1 then the karma number right aligned at x+cw-10 in `C_INK_OK`; the floating CLOUT and KARMA eyebrows (528, 529) are deleted. In CO-OP the clout number is dimmed `C_SMOKE` |
+| player cards (507 to 530) | name, source tag, two numbers, two eyebrows | at `CARD_Y` 660, under the storefront: the play camera looks at z -0.6 so the front wall's base sits at about y 652 and the row never covers the show window, the vestibule or the sidewalk; name; `GL_PAD / GL_KEYS / GL_PHONE / GL_BOT` glyph at scale 1 at (x+cw-24, y+6) in `C_SMOKE` instead of the text tag; `GL_CLOUT` scale 1 at (x+14, y+22) then the clout number at x+34 in F_MONO_L hazard; `GL_KARMA` scale 1 then the karma number right aligned at x+cw-10 in `C_INK_OK`; the floating CLOUT and KARMA eyebrows (528, 529) are deleted. In CO-OP the clout number is dimmed `C_SMOKE` |
 | toasts (422 to 432) | 3 slots at x 16, y 620 | 2 slots, right aligned at 1264, y 108 and 132, with the reserve |
 | join strip (408 to 419) | always, 320 wide | wide 45 s then narrow, or narrow always in CO-OP and VERSUS; hidden when phones off or offline |
 | heat wash, fire frame (503, 504) | | stays |

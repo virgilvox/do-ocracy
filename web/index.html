@@ -79,10 +79,10 @@
       <div class="eyebrow">Controls</div>
       <h3>Pads, keys, phones</h3>
       <dl>
-        <dt>Player 1</dt><dd>WASD to move. Space (or E) does it, hold for work. Q drops. R proposes.</dd>
-        <dt>Player 2</dt><dd>Arrows to move. Period does it. Comma drops. Slash proposes.</dd>
-        <dt>Start</dt><dd>Enter begins the night (or wait, it starts by itself).</dd>
-        <dt>Pads</dt><dd>Plug in up to 4. Stick moves, A does it, B drops, X proposes.</dd>
+        <dt>Menu</dt><dd>Space (keyboard) or A (pad) opens the menu. PLAY opens the lobby; Enter (or START) is READY and the night begins. The demo that runs while nobody plays says DEMO.</dd>
+        <dt>Player 1</dt><dd>WASD to move. Space (or E) does it, hold for work. Q drops. R proposes. Enter pauses.</dd>
+        <dt>Player 2</dt><dd>Arrows to move. Period does it. Comma drops. Slash proposes. Right Shift pauses.</dd>
+        <dt>Pads</dt><dd>Plug in up to 4. Stick moves, A does it, B drops, X proposes, START pauses.</dd>
         <dt>Phones</dt><dd>Scan the QR on screen, or open the phone controller and type the room code.</dd>
       </dl>
     </div>
@@ -165,7 +165,7 @@ async function start() {
   }
   host.autoWireLifecycle?.(window);
   $('gate').style.display = 'none';
-  status('Running. Space (WASD player) or Period (arrows player) to clock in. Pads: A.');
+  status('Running. Press Space (keyboard) or A (pad) to open the menu, then PLAY. The arrows player presses Period. Enter is READY in the lobby.');
   canvas.focus?.();
   const frame = async () => {
     try {

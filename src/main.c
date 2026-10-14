@@ -693,14 +693,21 @@ static void menu_update(float dt) {
         if (claim >= 0) claim_menu(claim);
         else if (M.title_idle > 20) menu_goto(SCR_ATTRACT);
         break;
-      case SCR_ATTRACT:
-        if (any) {
+      case SCR_ATTRACT: {
+        /* any button (A, B, X or START) ends the demo and opens the menu for
+         * that seat; a stick alone only lifts the title. Nobody ever joins
+         * the demo night: can_join() is false while the front end is up */
+        int btn = -1;
+        for (int i = 0; i < SEAT_COUNT && btn < 0; i++)
+          if (seats[i].present && (seats[i].btn & ~seats[i].prev & (IN_A | IN_B | IN_X | IN_START))) btn = i;
+        if (any || btn >= 0) {
           M.title_idle = 0;
           menu_goto(SCR_TITLE);
-          if (claim >= 0) claim_menu(claim);
+          if (btn >= 0) claim_menu(btn);
           else audio_play(SFX_MENU_MOVE);
         }
         break;
+      }
       default: {
         if (M.owner < 0 || !seats[M.owner].present) { M.owner = -1; menu_goto(SCR_TITLE); break; }
         int nav = seats[M.owner].nav;
@@ -1071,7 +1078,10 @@ static void camera(float dt) {
   else M.cam_blend = fmaxf(target, M.cam_blend - dt / 0.8f);
   float k = hud_ease_inout(M.cam_blend);
   float ox = sinf(t * 0.12f) * 5, oy = 16.5f, oz = 12.5f + cosf(t * 0.12f) * 1.5f, olz = 4.5f;   /* the start screen opens on the storefront */
-  float px = 0, py = 21.5f, pz = 15.0f, plz = -1.25f;
+  /* the play camera looks a little short of the room's centre so the whole
+   * storefront sits above y 652 and the player cards (draw.c CARD_Y) have
+   * the dark band under it to themselves */
+  float px = 0, py = 21.5f, pz = 15.0f, plz = -0.6f;
   float x = ox + (px - ox) * k, y = oy + (py - oy) * k, z = oz + (pz - oz) * k, lz = olz + (plz - olz) * k;
   if (G.shake > 0) { x += sinf(t * 60) * G.shake * 0.3f; }
   t3_object_set_position(world_cam, x, y, z);

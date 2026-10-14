@@ -43,6 +43,16 @@ static const char *const ATTRACT_TIPS[] = {
   "COORDINATE BEFORE. DO NOT APOLOGIZE AFTER.",
 };
 
+/* the title's call to action (6.1) and the attract tag (6.2): the keyboard
+ * player presses Space, so the block says so, and the demo says it is one */
+static const char *const TITLE_CTA = "PRESS A OR SPACE";
+static const char *const TITLE_CTA_SUB = "A ON A PAD. SPACE ON THE KEYBOARD.";
+static const char *const ATTRACT_TAG = "DEMO";
+static const char *const ATTRACT_SUB = "THE BOTS ARE PLAYING. NOBODY IS AT THE CONTROLS.";
+static const char *const ATTRACT_CTA = "PRESS A OR SPACE TO PLAY";
+/* the first five seconds of a real night, over every human's head */
+static const char *const YOU_ARE = "YOU ARE %s";
+
 /* the main menu (FINAL-frontend.md 6.3) */
 static const char *const MENU_ROWS[] = { "PLAY", "MODES", "SETTINGS", "HOW TO PLAY", "CREDITS" };
 static const char *const DENY_LINES[] = {
@@ -261,10 +271,11 @@ static const run_t FLASH_CAPS[5][5] = {
 };
 
 /* the coach: the first 40 s of a night, one step every 8 s (chip, line); steps
- * 1 to 3 point the ash chevrons at a station, 4 and 5 point nowhere */
+ * 1 to 3 point the ash chevrons at a station, 4 and 5 point nowhere. The %s
+ * in the first two lines is the group's button (A, SPACE, PERIOD, A OR SPACE) */
 static const char *const COACH_STEPS[5][2] = {
-  { "1 CLOUT", "GRAB PLYWOOD AT THE RACK" },
-  { "2 CLOUT", "LOAD THE LASER. HOLD TO CUT" },
+  { "1 CLOUT", "GRAB PLYWOOD AT THE RACK. PRESS %s" },
+  { "2 CLOUT", "LOAD THE LASER. HOLD %s TO CUT" },
   { "3 CLOUT", "CARRY IT TO SHOW & TELL" },
   { "4 KARMA", "TEAL RINGS: HOLD TO CLEAN" },
   { "5 KARMA", "A ? NEEDS A HI OR THEY LEAVE" },

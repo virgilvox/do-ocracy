@@ -1,0 +1,19 @@
+[
+ {"from": 300, "to": 305, "pad": 0, "buttons": ["A"]},
+ {"from": 400, "to": 405, "pad": 1, "buttons": ["A"]},
+ {"from": 400, "to": 405, "pad": 2, "buttons": ["A"]},
+ {"from": 400, "to": 405, "pad": 3, "buttons": ["A"]},
+ {"from": 500, "to": 505, "pad": 0, "buttons": ["A"]},
+ {"from": 560, "to": 565, "pad": 0, "buttons": ["B"]},
+ {"from": 700, "to": 705, "pad": 0, "buttons": ["START"]},
+ {"from": 700, "to": 705, "pad": 1, "buttons": ["START"]},
+ {"from": 700, "to": 705, "pad": 2, "buttons": ["START"]},
+ {"from": 700, "to": 705, "pad": 3, "buttons": ["START"]},
+ {"from": 2000, "to": 2004, "pad": 1, "buttons": ["X"]},
+ {"from": 2000, "to": 2004, "pad": 2, "buttons": ["X"]},
+ {"from": 2000, "to": 2004, "pad": 3, "buttons": ["X"]},
+ {"from": 3000, "to": 3004, "pad": 0, "buttons": ["X"]},
+ {"from": 3000, "to": 3004, "pad": 1, "buttons": ["X"]},
+ {"from": 3000, "to": 3004, "pad": 2, "buttons": ["X"]},
+ {"from": 3000, "to": 3004, "pad": 3, "buttons": ["X"]}
+]

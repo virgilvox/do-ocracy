@@ -1,0 +1,7 @@
+[
+ {"from": 1900, "to": 1905, "pad": 0, "buttons": ["A"]},
+ {"from": 2000, "to": 2005, "pad": 0, "buttons": ["A"]},
+ {"from": 2100, "to": 2105, "pad": 0, "buttons": ["B"]},
+ {"from": 2160, "to": 2165, "pad": 0, "buttons": ["START"]},
+ {"from": 4000, "to": 4004, "pad": 0, "buttons": ["X"]}
+]

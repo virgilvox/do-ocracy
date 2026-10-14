@@ -58,6 +58,14 @@ python3 -I tools/lint-content.py || bad "tools/lint-content.py"
 # - regroup.json: one pad plays SOLO, skips the flash and idles; it goes home in
 #   the night, the bots leave, new_group() runs and 7400 is the title with no
 #   owner; A and PLAY at 7500 and 7560 play the flash again at 7700.
+# - attract.json: nobody touches the cabinet for 30 s (600 is the title with
+#   PRESS A OR SPACE, 1800 the demo with its DEMO tag), then pad 1's A at 1900
+#   ends the demo and 1960 is the main menu; PLAY at 2000 (2060 the first
+#   rules card with the owner's key), B skips the flash, READY at 2160 (2200
+#   the countdown); the night starts at about 2358, so 2500 shows YOU ARE
+#   PAD 1 over the player and the pulsing card, 2760 the coach's first line
+#   with the key named and 4960 the night under way with the cards under the
+#   storefront.
 # - lobby-geom.json sets HELP to OFF in SETTINGS first so the lobby is clear.
 # - level-k.json come from tools/scripts and pick the night through SETTINGS.
 
@@ -65,6 +73,7 @@ echo "== scripted runs ($JOBS at a time)"
 # name | script | frames | extra env
 RUNS=(
   "idle|tools/accept/idle.json|90,600,1260,1520|"
+  "attract|tools/accept/attract.json|600,1800,1960,2060,2200,2500,2760,4960|"
   "claim|tools/accept/claim.json|330,420,560,640,790,860,1050,1400,1460,1640,1760,2460,2530,2650,2800,3030,3130,5900,6100|WAV=$OUT/claim.wav SAVE=$OUT/claim.bin"
   "second|tools/accept/second-night.json|6300,6700|"
   "regroup|tools/accept/regroup.json|7400,7700|"

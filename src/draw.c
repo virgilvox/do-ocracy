@@ -73,6 +73,23 @@ static void label_av(int x, int y, const char *s, uint32_t fg, uint32_t bg, int 
 /* what a player presses, named for their own input */
 static const char *glyph_a(const player_t *p) { return p->kb == 0 ? "SPACE" : p->kb == 1 ? "." : "A"; }
 
+/* a keycap name as a word for prose: the arrows half's "." reads PERIOD */
+static const char *key_word(const char *cap) { return cap[0] == '.' && !cap[1] ? "PERIOD" : cap; }
+
+/* the button the humans in the room press, for the coach: A on pads and
+ * phones, SPACE or PERIOD on a keyboard half alone, A OR SPACE for a mix */
+static const char *group_key(void) {
+  int pads = 0, kb0 = 0, kb1 = 0;
+  for (int i = 0; i < MAX_PLAYERS; i++) {
+    if (!P[i].active || P[i].bot) continue;
+    if (P[i].kb == 0) kb0++; else if (P[i].kb == 1) kb1++; else pads++;
+  }
+  if (kb0 && !pads && !kb1) return "SPACE";
+  if (kb1 && !pads && !kb0) return "PERIOD";
+  if (!kb0 && !kb1) return "A";
+  return "A OR SPACE";
+}
+
 /* the wall clock: the level says when the night starts and how many hours it spans */
 static void clock_str(char *out, int n) {
   float frac = G.phase == PH_NIGHT ? G.t / G.night_len : 0;
@@ -396,6 +413,21 @@ static void players_overlay(void) {
       hud_rect(sx - w / 2 - 7, sy - 2, w + 14, 22, p->color, 255);
       hud_text(F_MONO_S, sx, sy, p->name, C_TAPE, 255, AL_CENTER);
     }
+    /* the first five seconds of a real night: which one is you, in your
+     * colour, bobbing over your head. The start places stand 1.2 apart in a
+     * row of four, so each slot's block sits 40 px higher than the last and
+     * a leader line runs down to the body */
+    if (!p->bot && G.phase == PH_NIGHT && !G.attract && G.t < 5) {
+      int a = G.t > 4.5f ? (int)(255 * (5 - G.t) / 0.5f) : 255;
+      int bob = (int)(6 * fabsf(sinf(T * 5)));
+      char b[40]; snprintf(b, sizeof b, YOU_ARE, p->name);
+      int bw = hud_text_w(F_H3, b) + 28, by = sy - 82 - bob - (i % 4) * 40;
+      hud_line((float)sx, (float)(by + 34), (float)sx, (float)(sy - 10), 3, p->color, a);
+      hud_chevron((float)sx, (float)(sy - 12), 0, 1, 16, 5, p->color, a);
+      hud_rect(sx - bw / 2 + 4, by + 4, bw, 34, C_SHADOW, a);
+      hud_rect(sx - bw / 2, by, bw, 34, p->color, a);
+      hud_text(F_H3, sx, by + (34 - hud_font_h(F_H3)) / 2, b, C_TAPE, a, AL_CENTER);
+    }
     /* the goal line for whatever is in your hands */
     if (p->has_goal && !p->bot) {
       int gw = hud_text_w(F_MONO_S, p->goal_label) + 18;
@@ -633,17 +665,24 @@ static void top_bar(void) {
   else if (L->light.hud_tint > 0) hud_rect(0, 0, HUD_W, HUD_H, L->light.tint_col, (int)(28 * L->light.hud_tint));   /* the dust, all night */
 }
 
+/* the player cards sit in the dark band under the storefront: the play
+ * camera (main.c) puts the front wall's base at about y 652, so the row at
+ * CARD_Y never covers the show window, the vestibule or the sidewalk */
+#define CARD_Y 660
 static void player_cards(void) {
   int n = player_count();
   if (!n) return;
   int cw = n > 4 ? 150 : 210, gap = 10;
   int total = n * cw + (n - 1) * gap;
-  int x = HUD_W / 2 - total / 2, y = HUD_H - 62;
+  int x = HUD_W / 2 - total / 2, y = CARD_Y;
   bool coop = G.mode == MODE_COOP;
+  bool fresh = G.t < 5 && !G.attract;   /* the first five seconds: your own card pulses in your colour */
+  int pulse = 120 + (int)(135 * (0.5f + 0.5f * sinf(T * 6.3f)));
   for (int i = 0; i < MAX_PLAYERS; i++) {
     player_t *p = &P[i];
     if (!p->active) continue;
     hud_panel(x, y, cw, 50, C_SLAB, C_STEEL_HI);
+    if (fresh && !p->bot) hud_frame(x, y, cw, 50, 3, p->color, pulse);
     hud_rect(x, y, 8, 50, p->color, 255);
     hud_clip(x, y, cw - 28, 50);
     hud_text(F_MONO_S, x + 16, y + 4, p->name, C_BONE, 255, AL_LEFT);
@@ -692,7 +731,12 @@ static void coach(void) {
   if (k < 0 || G.ticker_t > 0) return;   /* one thing at a time up top */
   float local = G.t - k * 8;
   int a = local < 0.3f ? (int)(local / 0.3f * 255) : 255;
-  slot_bar(COACH_STEPS[k][0], k >= 3 ? C_LIVE : C_HAZARD, COACH_STEPS[k][1], C_BONE, a, 0);
+  /* the first two steps name the button the group has under its thumb */
+  char line[96];
+  const char *fmt = COACH_STEPS[k][1];
+  if (strstr(fmt, "%s")) snprintf(line, sizeof line, fmt, group_key());
+  else snprintf(line, sizeof line, "%s", fmt);
+  slot_bar(COACH_STEPS[k][0], k >= 3 ? C_LIVE : C_HAZARD, line, C_BONE, a, 0);
 }
 
 /* ── full screens ────────────────────────────────────────────────── */
@@ -704,6 +748,22 @@ static const char *seat_cap(int seat, int btn) {
   static const char *const KB0[4] = { "SPACE", "Q", "R", "ENTER" };
   static const char *const KB1[4] = { ".", ",", "/", "RSHIFT" };
   return seat == SEAT_KB(0) ? KB0[btn] : seat == SEAT_KB(1) ? KB1[btn] : PAD[btn];
+}
+
+/* the owner's A as a keycap: SPACE or . for the keyboard halves */
+static const char *flash_glyph(void) {
+  int seat = M.owner;
+  if (seat < 0) return "A";
+  return seat_cap(seat, 0);
+}
+
+/* the first rules card's caption with the owner's own button: HOLD SPACE. DO THE THING. */
+static const run_t *flash_cap0(void) {
+  static char b[24];
+  static run_t runs[3];
+  snprintf(b, sizeof b, "HOLD %s. ", key_word(flash_glyph()));
+  runs[0] = (run_t){ b, C_HAZARD }; runs[1] = FLASH_CAPS[0][1]; runs[2] = (run_t){ NULL, 0 };
+  return runs;
 }
 
 /* the call to action: a hazard block that breathes 8 px on a 1.4 s period and never blinks off */
@@ -738,8 +798,10 @@ static void title_idle(float f) {
   float ta = ph < 0.15f ? ph / 0.15f : ph > 5.85f ? (6 - ph) / 0.15f : 1;
   hud_text_sh(F_H3, 356, 392, TAGLINES[(int)(T / 6.0f) % COUNT(TAGLINES)], C_HAZARD, (int)(late * ta), AL_LEFT);
   if (late <= 0) return;
-  cta(430, 500, 420, 56, F_H2, "PRESS A", late);
-  if (M.kb_seen) hud_text(F_MONO_S, 640, 566, "OR SPACE ON A KEYBOARD", C_ASH, late, AL_CENTER);
+  int cw = hud_text_w(F_H2, TITLE_CTA) + 72;
+  if (cw < 420) cw = 420;
+  cta(640 - cw / 2, 500, cw, 56, F_H2, TITLE_CTA, late);
+  hud_text(F_MONO_S, 640, 566, TITLE_CTA_SUB, C_ASH, late, AL_CENTER);
   if (M.pending_count) {
     char b[32]; snprintf(b, sizeof b, "%d AT THE DOOR", M.pending_count);
     hud_text(F_MONO_S, 640, 586, b, C_ASH, late, AL_CENTER);
@@ -770,9 +832,20 @@ static void attract_overlay(void) {
   hud_set_alpha(255);
 }
 
+/* the demo says it is one: a DEMO tag top centre with the line under it, and
+ * the call to action breathing and pulsing in the corner (it never blinks off) */
 static void attract_screen(void) {
   float up = hud_ease_out(fminf(1, M.t / 0.3f));
-  cta(1040, 620, 216, 44, F_H3, "PRESS A", 255);
+  int tw = hud_text_w(F_H2, ATTRACT_TAG) + 48;
+  hud_rect(640 - tw / 2 + 6, 36, tw, 44, C_SHADOW, 255);
+  hud_rect(640 - tw / 2, 30, tw, 44, C_HAZARD, 255);
+  hud_text(F_H2, 640, 30 + (44 - hud_font_h(F_H2)) / 2, ATTRACT_TAG, C_TAPE, 255, AL_CENTER);
+  int sw = hud_text_w(F_MONO_S, ATTRACT_SUB) + 24;
+  hud_rect(640 - sw / 2, 80, sw, 22, C_CHAR, 230);
+  hud_text(F_MONO_S, 640, 83, ATTRACT_SUB, C_BONE, 255, AL_CENTER);
+  int pulse = 190 + (int)(65 * (0.5f + 0.5f * sinf(T * 4.4f)));
+  int cw = hud_text_w(F_H3, ATTRACT_CTA) + 48;
+  cta(1256 - cw, 620, cw, 44, F_H3, ATTRACT_CTA, pulse);
   int y = 680 + (int)(40 * (1 - up));
   hud_rect(0, y, HUD_W, 40, C_TAPE, 255);
   hud_text(F_MONO, HUD_W / 2, y + 6, ATTRACT_TIPS[(int)(T / 3.0f) % COUNT(ATTRACT_TIPS)], C_ASH, 255, AL_CENTER);
@@ -837,9 +910,9 @@ static void menu_preview(int row) {
         float f = fminf(1, (lt - 1.1f) / 1.0f);
         hud_rect(980, 400, 200, 12, C_CHAR, 255);
         hud_rect(980, 400, (int)(200 * f), 12, C_HAZARD, 255);
-        hud_keycap(940, 394, "A", C_HAZARD, C_TAPE);
+        hud_keycap(940, 394, flash_glyph(), C_HAZARD, C_TAPE);
       }
-      hud_text_runs(F_H3, 970, 450, FLASH_CAPS[0], 255, AL_CENTER);
+      hud_text_runs(F_H3, 970, 450, flash_cap0(), 255, AL_CENTER);
       break;
     }
     case 4:
@@ -1253,12 +1326,6 @@ static void credits_screen(void) {
 static float lin(float lt, float a, float b) { return clampf((lt - a) / (b - a), 0, 1); }
 
 /* the seat whose buttons the flash names */
-static const char *flash_glyph(void) {
-  int seat = M.owner;
-  if (seat < 0) return "A";
-  return seat_cap(seat, 0);
-}
-
 /* a score pop rising 40 px over 0.5 s */
 static void flash_pop(int x, int y, const char *s, uint32_t c, float t) {
   if (t < 0) return;
@@ -1389,7 +1456,7 @@ static void rules_flash(void) {
   flash_card(step, lt, ox);
   if (step == 3 && lt >= 1.9f && lt < 2.5f && fmodf(lt - 1.9f, 0.5f) < 0.25f) hud_frame(260, cy, 760, 440, 12, C_FAULT, 255);
   hud_clip_clear();
-  hud_text_runs(F_H2, 640 + ox, 482 + drop, FLASH_CAPS[step], 255, AL_CENTER);
+  hud_text_runs(F_H2, 640 + ox, 482 + drop, step == 0 ? flash_cap0() : FLASH_CAPS[step], 255, AL_CENTER);
   hud_set_alpha(base);
   hud_steps(640, 528 + drop, 5, step, M.flash_wipe > 0 ? 0 : fminf(1, M.flash_t / 2.6f));
   /* the keys, centred under the card */
